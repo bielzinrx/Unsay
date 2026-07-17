@@ -1,13 +1,13 @@
 # Unsay
 
 **Take back what you said.**
+---
 
-Delete, edit, and reply to Minecraft chat messages. Unsend and edits apply for every player on the server.
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/010edfec-d69a-4298-8b2e-8e7c44d3d50a" />
 
-<p align="center">
-  <img src="common/src/main/resources/assets/unsend/icon.png" alt="Unsay" width="96"/>
-</p>
-
+---
+Unsay lets you delete, edit, and reply to Minecraft chat messages. When you unsend or edit your message, every player sees the change.
+---
 ## Features
 
 | | |
@@ -23,23 +23,26 @@ Delete, edit, and reply to Minecraft chat messages. Unsend and edits apply for e
 3. Click trash — removed for everyone
 
 **Also:** `Shift+Delete` / `Shift+Backspace`
-
+<img width="840" height="68" alt="image" src="https://github.com/user-attachments/assets/f3fb5006-a1c4-43f3-b07e-0713e19a6426" />
+---
 ## Edit
 
 - **Shift** + pencil, or  
 - Empty input + **Shift+↑** to browse your own lines  
 
 Send to update for everyone. Empty field = unsend.
-
+<img width="840" height="117" alt="image" src="https://github.com/user-attachments/assets/c8915395-135c-4d24-a5c7-7fa771d64c92" />
+---
 ## Reply
 
 Click the reply arrow to quote a message in global chat.
-
+<img width="813" height="118" alt="image" src="https://github.com/user-attachments/assets/edeefd26-2802-44f5-b009-1bef48fed8d7" />
+---
 ## Requirements
 
 - Client **and** server need the mod
 - **Fabric** (Fabric API) or **Forge**
-- Minecraft version: this branch (`1.19.2`)
+- Minecraft version: this branch (`1.20.1`)
 
 ## Branches
 
@@ -56,8 +59,8 @@ Click the reply arrow to quote a message in global chat.
 
 Outputs:
 
-- `fabric/build/libs/Unsay-1.19.2-Fabric-*.jar`
-- `forge/build/libs/Unsay-1.19.2-Forge-*.jar`
+- `fabric/build/libs/Unsay-1.20.1-Fabric-*.jar`
+- `forge/build/libs/Unsay-1.20.1-Forge-*.jar`
 
 Requires JDK 17+.
 
