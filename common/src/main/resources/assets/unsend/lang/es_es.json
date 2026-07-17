@@ -1,0 +1,19 @@
+{
+  "unsend.tooltip.delete": "Eliminar para todos  (Shift+Delete)",
+  "unsend.tooltip.edit": "Editar mensaje",
+  "unsend.tooltip.reply": "Responder",
+  "unsend.tooltip.bulk_delete": "Eliminar seleccionados para todos",
+  "unsend.tooltip.drop_to_delete": "Suelta para eliminar %s",
+  "unsend.bulk.delete": "Eliminar %s seleccionados",
+  "unsend.select.hint": "%s seleccionada(s) · Delete para borrar",
+  "unsend.drop.hint": "Suelta aquí",
+  "unsend.drop.count": "%s seleccionados",
+  "unsend.drop.drag_tip": "arrastra aquí",
+  "unsend.drag.ghost": "%s mensajes",
+  "unsend.badge.edited": "(editado)",
+  "unsend.status.editing": "Editando…  (Esc para cancelar)",
+  "unsend.status.replying": "%s  (Esc para cancelar)",
+  "unsend.message.deleted_placeholder": "mensaje eliminado",
+  "modmenu.nameTranslation.unsend": "Unsay",
+  "modmenu.descriptionTranslation.unsend": "Elimina, edita y responde mensajes del chat. Mantén Shift en tu mensaje."
+}

@@ -1,0 +1,19 @@
+{
+  "unsend.tooltip.delete": "Apagar para todos  (Shift+Delete)",
+  "unsend.tooltip.edit": "Editar mensagem",
+  "unsend.tooltip.reply": "Responder",
+  "unsend.tooltip.bulk_delete": "Apagar selecionadas para todos",
+  "unsend.tooltip.drop_to_delete": "Solte para apagar %s",
+  "unsend.bulk.delete": "Apagar %s selecionadas",
+  "unsend.select.hint": "%s selecionada(s) · Delete para apagar",
+  "unsend.drop.hint": "Solte aqui",
+  "unsend.drop.count": "%s selecionadas",
+  "unsend.drop.drag_tip": "arraste até aqui",
+  "unsend.drag.ghost": "%s mensagens",
+  "unsend.badge.edited": "(editado)",
+  "unsend.status.editing": "Editando…  (Esc para cancelar)",
+  "unsend.status.replying": "%s  (Esc para cancelar)",
+  "unsend.message.deleted_placeholder": "mensagem apagada",
+  "modmenu.nameTranslation.unsend": "Unsay",
+  "modmenu.descriptionTranslation.unsend": "Apague, edite e responda mensagens do chat. Segure Shift na sua mensagem."
+}

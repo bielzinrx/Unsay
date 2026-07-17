@@ -1,0 +1,54 @@
+plugins { id 'com.gradleup.shadow' }
+
+architectury {
+    platformSetupLoomIde()
+    forge()
+}
+
+loom {
+    forge {
+        mixinConfig "unsend.common.mixins.json"
+        mixinConfig "unsend.forge.mixins.json"
+    }
+}
+
+configurations {
+    common       { canBeResolved = true; canBeConsumed = false }
+    shadowBundle { canBeResolved = true; canBeConsumed = false }
+    compileClasspath.extendsFrom common
+    runtimeClasspath.extendsFrom common
+    developmentForge.extendsFrom common
+}
+
+dependencies {
+    forge "net.minecraftforge:forge:$rootProject.forge_version"
+    common(project(path: ':common', configuration: 'namedElements')) { transitive false }
+    shadowBundle project(path: ':common', configuration: 'transformProductionForge')
+}
+
+processResources {
+    def props = [
+        version              : project.version,
+        minecraft_version    : rootProject.minecraft_version,
+        forge_version        : rootProject.forge_version,
+        loader_version_range : "[43,)",
+        mod_id               : "unsend",
+        mod_name             : "Unsay",
+        mod_license          : "MIT"
+    ]
+    inputs.properties props
+
+    filesMatching('META-INF/mods.toml') { expand props }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+shadowJar {
+    configurations    = [project.configurations.shadowBundle]
+    archiveClassifier = 'dev-shadow'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+remapJar {
+    input.set shadowJar.archiveFile
+    archiveClassifier = ''
+}

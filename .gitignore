@@ -1,0 +1,26 @@
+# Gradle / Loom
+.gradle/
+build/
+**/build/
+.architectury-transformer/
+run/
+out/
+remappedSrc/
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local / scratch
+*.tmp
+*.bak
+screen.jpg
+*.hprof
