@@ -42,7 +42,7 @@ Click the reply arrow to quote a message in global chat.
 
 - Client **and** server need the mod
 - **Fabric** (Fabric API) or **Forge**
-- Minecraft version: this branch (`1.20.1`)
+- Minecraft version: this branch (`1.19.2`)
 
 ## Branches
 
@@ -59,8 +59,8 @@ Click the reply arrow to quote a message in global chat.
 
 Outputs:
 
-- `fabric/build/libs/Unsay-1.20.1-Fabric-*.jar`
-- `forge/build/libs/Unsay-1.20.1-Forge-*.jar`
+- `fabric/build/libs/Unsay-1.19.2-Fabric-*.jar`
+- `forge/build/libs/Unsay-1.19.2-Forge-*.jar`
 
 Requires JDK 17+.
 
