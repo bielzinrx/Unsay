@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "package": "com.bielzinrx.unsend.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [],
+  "client": [
+    "ChatComponentAccessor",
+    "ChatComponentMixin",
+    "ChatScreenAccessor",
+    "ChatScreenMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
