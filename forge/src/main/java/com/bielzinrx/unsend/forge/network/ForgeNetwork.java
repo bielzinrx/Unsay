@@ -20,7 +20,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 public final class ForgeNetwork {
-    private static final String PROTOCOL = "3";
+    private static final String PROTOCOL = "4";
     private static SimpleChannel CHANNEL;
     private static int id;
 
@@ -66,8 +66,8 @@ public final class ForgeNetwork {
             new RegisterMessage(messageId, sender, senderName, plainText));
     }
 
-    public static void sendDelete(ServerPlayer target, long messageId) {
-        CHANNEL.send(PacketDistributor.PLAYER.with(() -> target), new DeleteS2C(messageId));
+    public static void sendDelete(ServerPlayer target, long messageId, UUID sender, String plainText) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> target), new DeleteS2C(messageId, sender, plainText));
     }
 
     public static void sendEdit(ServerPlayer target, long messageId, String newText) {
@@ -94,11 +94,11 @@ public final class ForgeNetwork {
 
     public record DeleteC2S(long messageId) {
         public static void encode(DeleteC2S msg, FriendlyByteBuf buf) {
-            Packets.writeDelete(buf, msg.messageId);
+            Packets.writeDeleteC2S(buf, msg.messageId);
         }
 
         public static DeleteC2S decode(FriendlyByteBuf buf) {
-            return new DeleteC2S(Packets.readDelete(buf));
+            return new DeleteC2S(Packets.readDeleteC2S(buf));
         }
 
         public static void handle(DeleteC2S msg, Supplier<NetworkEvent.Context> ctx) {
@@ -111,18 +111,20 @@ public final class ForgeNetwork {
         }
     }
 
-    public record DeleteS2C(long messageId) {
+    public record DeleteS2C(long messageId, UUID sender, String plainText) {
         public static void encode(DeleteS2C msg, FriendlyByteBuf buf) {
-            Packets.writeDelete(buf, msg.messageId);
+            Packets.writeDeleteS2C(buf, msg.messageId, msg.sender, msg.plainText);
         }
 
         public static DeleteS2C decode(FriendlyByteBuf buf) {
-            return new DeleteS2C(Packets.readDelete(buf));
+            Packets.DeleteS2CPayload p = Packets.readDeleteS2C(buf);
+            return new DeleteS2C(p.messageId(), p.sender(), p.plainText());
         }
 
         public static void handle(DeleteS2C msg, Supplier<NetworkEvent.Context> ctx) {
             ctx.get().enqueueWork(() ->
-                DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> UnsendClient.handleDelete(msg.messageId)));
+                DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
+                    UnsendClient.handleDelete(msg.messageId, msg.sender, msg.plainText)));
             ctx.get().setPacketHandled(true);
         }
     }

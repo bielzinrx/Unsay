@@ -10,7 +10,7 @@ import net.minecraft.network.chat.MessageSignature;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.UUID; // sender filter for remote HUD wipe
 
 /** Removes exactly one HUD entry for a tracked message. */
 public final class ChatHudRemover {
@@ -177,6 +177,43 @@ public final class ChatHudRemover {
     private static String fullOf(GuiMessage m) {
         if (m == null || m.content() == null) return "";
         return ClientMessageIndex.stripFormatting(m.content().getString()).trim();
+    }
+
+    /**
+     * Wipe one HUD line matching sender name body when we have no tracked id
+     * (remote unsend after register race). Newest match first.
+     */
+    public static void removeBySenderAndPlain(UUID sender, String plain) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.gui == null || plain == null || plain.isBlank()) return;
+        ChatComponent chat = mc.gui.getChat();
+        if (!(chat instanceof ChatComponentAccessor acc)) return;
+        List<GuiMessage> all = acc.unsend$getAllMessages();
+        if (all == null || all.isEmpty()) return;
+
+        String want = ClientMessageIndex.stripEditedBadge(plain.trim());
+        String selfName = null;
+        if (sender != null && mc.getConnection() != null) {
+            // Best-effort: use online profile name if available
+            var info = mc.getConnection().getPlayerInfo(sender);
+            if (info != null) selfName = info.getProfile().getName();
+        }
+
+        int hit = -1;
+        for (int i = 0; i < all.size(); i++) {
+            String full = fullOf(all.get(i));
+            if (!bodyEquals(full, want)) continue;
+            if (selfName != null) {
+                String own = ClientMessageIndex.extractOwnPlain(full, selfName);
+                if (own == null || !want.equals(ClientMessageIndex.stripEditedBadge(own))) continue;
+            }
+            hit = i;
+            break; // newest-first list
+        }
+        if (hit >= 0) {
+            all.remove(hit);
+            acc.unsend$refreshTrimmedMessage();
+        }
     }
 
     private static boolean bodyEquals(String full, String plain) {

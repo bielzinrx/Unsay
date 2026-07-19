@@ -15,7 +15,7 @@ public interface IPlatformHelper {
 
     void sendRegisterMessage(ServerPlayer target, long messageId, UUID sender, String senderName, String plainText);
 
-    void sendDeleteBroadcast(ServerPlayer target, long messageId);
+    void sendDeleteBroadcast(ServerPlayer target, long messageId, UUID sender, String plainText);
 
     void sendEditBroadcast(ServerPlayer target, long messageId, String newText);
 }

@@ -72,12 +72,14 @@ public final class ChatMessageTracker {
             return false;
         }
 
+        UUID sender = msg.sender;
+        String plain = msg.plainText == null ? "" : msg.plainText;
         MESSAGES.remove(messageId);
         DELETED_AT_MS.put(messageId, System.currentTimeMillis());
         MinecraftServer server = Unsend.getServer();
         if (server != null) {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-                Platform.get().sendDeleteBroadcast(player, messageId);
+                Platform.get().sendDeleteBroadcast(player, messageId, sender, plain);
             }
         }
         Unsend.LOGGER.info("[Unsend] Message {} deleted by {}", messageId, requester.getGameProfile().getName());
@@ -120,21 +122,19 @@ public final class ChatMessageTracker {
             return false;
         }
 
-        TrackedChatMessage target = MESSAGES.get(targetId);
-        if (target == null && fallbackPreview != null && !fallbackPreview.isBlank()) {
-            target = findRecentByPlain(fallbackPreview);
-        }
+        // Resolve ONLY by id. Never "newest same plain" — that replied to the wrong twin.
+        TrackedChatMessage target = targetId > 0 ? MESSAGES.get(targetId) : null;
 
         String targetName;
         String previewText;
         if (target != null) {
             targetName = target.senderName == null || target.senderName.isEmpty() ? "?" : target.senderName;
             previewText = preview(target.plainText);
-        } else if (isDeleted(targetId)) {
+        } else if (targetId > 0 && isDeleted(targetId)) {
             targetName = (fallbackName != null && !fallbackName.isBlank()) ? fallbackName : "?";
             previewText = Component.translatable("unsend.message.deleted_placeholder").getString();
         } else {
-            // Not in server map — client still saw the line; do NOT label as deleted
+            // Not in map (or provisional id): trust client citation hints only
             targetName = (fallbackName != null && !fallbackName.isBlank()) ? fallbackName : "?";
             String fp = fallbackPreview == null ? "" : fallbackPreview.strip();
             previewText = fp.isEmpty() ? "…" : preview(fp);
@@ -153,18 +153,6 @@ public final class ChatMessageTracker {
         long replyParent = target != null ? target.id : Math.max(0L, targetId);
         register(sender, text, replyParent);
         return true;
-    }
-
-    private static TrackedChatMessage findRecentByPlain(String plain) {
-        String needle = sanitize(plain);
-        if (needle.isEmpty()) return null;
-        TrackedChatMessage best = null;
-        for (TrackedChatMessage m : MESSAGES.values()) {
-            if (m.plainText == null) continue;
-            if (!m.plainText.equals(needle)) continue;
-            if (best == null || m.createdAtMs > best.createdAtMs) best = m;
-        }
-        return best;
     }
 
     private static void broadcastRegister(TrackedChatMessage msg) {

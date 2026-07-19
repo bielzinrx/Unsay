@@ -5,6 +5,8 @@ import com.bielzinrx.unsend.client.ClientMessageIndex.ClientTrackedMessage;
 import com.bielzinrx.unsend.platform.Platform;
 import net.minecraft.client.Minecraft;
 
+import java.util.UUID;
+
 /** Client-side unsend: wipe exactly one chat line, optionally notify server. */
 public final class ClientDelete {
     private ClientDelete() {}
@@ -23,24 +25,37 @@ public final class ClientDelete {
         deleteTracked(tracked, true, Float.NaN, Float.NaN, null);
     }
 
-    /** Delete with optional animation origin. */
     public static void deleteTracked(ClientTrackedMessage tracked, float fromX, float fromY) {
         deleteTracked(tracked, true, fromX, fromY, null);
     }
 
-    /** Delete the exact HUD line the user hovered (identical bodies need the pin). */
     public static void deleteTracked(ClientTrackedMessage tracked, float fromX, float fromY,
                                      HudPin pin) {
         deleteTracked(tracked, true, fromX, fromY, pin);
     }
 
     public static void applyRemoteDelete(long messageId) {
+        applyRemoteDelete(messageId, null, null);
+    }
+
+    /**
+     * Another player (or the server) deleted a message. Always try to wipe the HUD —
+     * even when this client never bound the server id (register race).
+     */
+    public static void applyRemoteDelete(long messageId, UUID sender, String plainText) {
         ClientTrackedMessage tracked = ClientMessageIndex.get(messageId);
-        if (tracked == null) {
-            ClientMessageIndex.tombstoneId(messageId);
+        if (tracked == null && plainText != null && !plainText.isBlank()) {
+            tracked = ClientMessageIndex.findBestForRemote(sender, plainText);
+        }
+        if (tracked != null) {
+            deleteTracked(tracked, false, Float.NaN, Float.NaN, ChatHudEditor.capturePin(tracked));
             return;
         }
-        deleteTracked(tracked, false, Float.NaN, Float.NaN, null);
+        // No index row — still strip one matching HUD line so multiplayer unsend is visible
+        if (plainText != null && !plainText.isBlank()) {
+            ChatHudRemover.removeBySenderAndPlain(sender, plainText);
+        }
+        ClientMessageIndex.tombstoneId(messageId);
     }
 
     public static void deleteFromEdit(long localId, long resolvedId) {
@@ -103,13 +118,22 @@ public final class ClientDelete {
 
         DeleteAnimation.start(animText, fromX, fromY, trashX, trashY, null);
 
-        if (notifyServer && id >= 0) {
-            Platform.get().sendDeleteRequestToServer(id);
+        if (notifyServer) {
+            if (id >= 0) {
+                Platform.get().sendDeleteRequestToServer(id);
+            } else {
+                // Provisional only: still try to resolve one more time after pin-based HUD wipe
+                long late = resolveServer(snap).id;
+                if (late >= 0) {
+                    Platform.get().sendDeleteRequestToServer(late);
+                }
+            }
         }
     }
 
     /** Provisional → server id for the SAME chat line only. */
     private static ClientTrackedMessage resolveServer(ClientTrackedMessage tracked) {
+        if (tracked == null) return null;
         if (tracked.id >= 0) return tracked;
         ClientTrackedMessage bySig = null;
         ClientTrackedMessage byTick = null;

@@ -64,9 +64,9 @@ public final class FabricPlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public void sendDeleteBroadcast(ServerPlayer target, long messageId) {
+    public void sendDeleteBroadcast(ServerPlayer target, long messageId, UUID sender, String plainText) {
         FriendlyByteBuf buf = PacketByteBufs.create();
-        Packets.writeDelete(buf, messageId);
+        Packets.writeDeleteS2C(buf, messageId, sender, plainText);
         ServerPlayNetworking.send(target, PacketIds.DELETE_S2C, buf);
     }
 

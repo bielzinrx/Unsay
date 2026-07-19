@@ -34,8 +34,8 @@ public final class ForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public void sendDeleteBroadcast(ServerPlayer target, long messageId) {
-        ForgeNetwork.sendDelete(target, messageId);
+    public void sendDeleteBroadcast(ServerPlayer target, long messageId, UUID sender, String plainText) {
+        ForgeNetwork.sendDelete(target, messageId, sender, plainText);
     }
 
     @Override

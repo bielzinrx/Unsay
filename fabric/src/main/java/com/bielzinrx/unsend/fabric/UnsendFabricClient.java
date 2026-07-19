@@ -15,7 +15,7 @@ public final class UnsendFabricClient implements ClientModInitializer {
     public void onInitializeClient() {
         FabricPlatformHelper.setClientDeleteSender(messageId -> {
             FriendlyByteBuf buf = PacketByteBufs.create();
-            Packets.writeDelete(buf, messageId);
+            Packets.writeDeleteC2S(buf, messageId);
             ClientPlayNetworking.send(PacketIds.DELETE_C2S, buf);
         });
         FabricPlatformHelper.setClientEditSender((messageId, text) -> {
@@ -35,8 +35,8 @@ public final class UnsendFabricClient implements ClientModInitializer {
         });
 
         ClientPlayNetworking.registerGlobalReceiver(PacketIds.DELETE_S2C, (client, handler, buf, responseSender) -> {
-            long id = Packets.readDelete(buf);
-            client.execute(() -> UnsendClient.handleDelete(id));
+            Packets.DeleteS2CPayload payload = Packets.readDeleteS2C(buf);
+            client.execute(() -> UnsendClient.handleDelete(payload.messageId(), payload.sender(), payload.plainText()));
         });
 
         ClientPlayNetworking.registerGlobalReceiver(PacketIds.EDIT_S2C, (client, handler, buf, responseSender) -> {

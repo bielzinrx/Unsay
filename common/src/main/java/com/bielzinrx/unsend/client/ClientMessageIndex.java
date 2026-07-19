@@ -567,6 +567,33 @@ public final class ClientMessageIndex {
         return ordered.get(rank);
     }
 
+    /**
+     * Locate a tracked row for a remote delete when the server id was never bound.
+     * Prefers a unique plain match for the sender; if several twins exist, returns null
+     * (caller falls back to HUD wipe of one line).
+     */
+    public static ClientTrackedMessage findBestForRemote(UUID sender, String plain) {
+        if (plain == null || plain.isBlank()) return null;
+        String want = stripEditedBadge(plain.trim());
+        List<ClientTrackedMessage> hits = new ArrayList<>();
+        for (ClientTrackedMessage m : BY_ID.values()) {
+            if (m == null || m.deleting || isTombstoned(m)) continue;
+            if (sender != null && !sender.equals(m.sender)) continue;
+            String p = m.plainText == null ? "" : stripEditedBadge(m.plainText);
+            if (want.equals(p)) hits.add(m);
+        }
+        if (hits.isEmpty()) return null;
+        if (hits.size() == 1) return hits.get(0);
+        // Prefer a server-id row (newest id first)
+        hits.sort((a, b) -> {
+            if (a.id >= 0 && b.id >= 0) return Long.compare(b.id, a.id);
+            if (a.id >= 0) return -1;
+            if (b.id >= 0) return 1;
+            return Integer.compare(b.addedTime, a.addedTime);
+        });
+        return hits.get(0);
+    }
+
     public static Iterable<ClientTrackedMessage> all() {
         return BY_ID.values();
     }

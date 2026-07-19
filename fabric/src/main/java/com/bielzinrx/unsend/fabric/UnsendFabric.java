@@ -21,7 +21,7 @@ public final class UnsendFabric implements ModInitializer {
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> Unsend.onServerStop());
 
         ServerPlayNetworking.registerGlobalReceiver(PacketIds.DELETE_C2S, (server, player, handler, buf, responseSender) -> {
-            long messageId = Packets.readDelete(buf);
+            long messageId = Packets.readDeleteC2S(buf);
             server.execute(() -> UnsendServer.onDeleteRequest(player, messageId));
         });
 
