@@ -101,11 +101,8 @@ public final class ChatHudEditor {
         GuiMessage m = all.get(idx);
         String badge = Component.translatable("unsend.badge.edited").getString();
 
+        // Keep reply citation styles (gray italic ↳ line) — do NOT flatten to plain white
         MutableComponent updated = rebuildLine(m.content(), matchPlain, safe);
-
-        String asText = ClientMessageIndex.stripFormatting(updated.getString());
-        asText = ClientMessageIndex.stripEditedBadge(asText);
-        updated = Component.literal(asText);
         updated.append(Component.literal(" ").withStyle(ChatFormatting.DARK_GRAY));
         updated.append(Component.literal(badge).withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
 
@@ -378,6 +375,27 @@ public final class ChatHudEditor {
     private static MutableComponent rebuildLine(Component original, String oldPlain, String newPlain) {
         String stripped = ClientMessageIndex.stripFormatting(original == null ? "" : original.getString());
         stripped = ClientMessageIndex.stripEditedBadge(stripped);
+
+        // Reply messages: "  ↳ Name · preview\n<body>"
+        int nl = stripped.indexOf('\n');
+        if (nl >= 0 && stripped.contains("↳")) {
+            String cite = stripped.substring(0, nl);
+            String bodyLine = ClientMessageIndex.stripEditedBadge(stripped.substring(nl + 1).trim());
+            MutableComponent out = Component.literal(cite)
+                .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC);
+            out.append(Component.literal("\n"));
+            Matcher bm = PREFIX.matcher(bodyLine);
+            if (bm.matches()) {
+                out.append(Component.literal(bm.group(1) + newPlain));
+            } else if (oldPlain != null && !oldPlain.isEmpty() && bodyLine.contains(oldPlain)) {
+                int idx = bodyLine.lastIndexOf(oldPlain);
+                out.append(Component.literal(
+                    bodyLine.substring(0, idx) + newPlain + bodyLine.substring(idx + oldPlain.length())));
+            } else {
+                out.append(Component.literal(newPlain));
+            }
+            return out;
+        }
 
         Matcher m = PREFIX.matcher(stripped);
         if (m.matches()) {

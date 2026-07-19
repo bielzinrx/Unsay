@@ -50,7 +50,7 @@ public final class ClientMessageIndex {
         return TOMBSTONE_LINES.contains(lineKey(m.sender, m.addedTime, m.plainText));
     }
 
-
+    /** Remember a deleted line forever (this session) and purge only true twins. */
     public static void tombstone(ClientTrackedMessage snap) {
         if (snap == null) return;
         TOMBSTONE_IDS.add(snap.id);
@@ -102,7 +102,6 @@ public final class ClientMessageIndex {
         return String.valueOf(sender) + '|' + addedTime + '|' + body;
     }
 
-
     private static boolean hudStillHasSignature(MessageSignature signature) {
         if (signature == null) return false;
         try {
@@ -120,7 +119,6 @@ public final class ClientMessageIndex {
         }
         return false;
     }
-
 
     private static boolean hudStillHasLine(UUID sender, int addedTime, String plain) {
         String want = plain == null ? "" : stripEditedBadge(plain);
@@ -148,7 +146,6 @@ public final class ClientMessageIndex {
         return false;
     }
 
-    /** Drop false bans for a line that is still rendered. */
     private static void reviveVisibleLine(GuiMessage msg, UUID self, String ownPlain) {
         if (msg == null) return;
         if (msg.headerSignature() != null) {
@@ -159,7 +156,6 @@ public final class ClientMessageIndex {
         }
     }
 
-    /** Un-ban a tracked row that is still on screen (icons / edit / delete). */
     private static ClientTrackedMessage reviveTracked(ClientTrackedMessage t) {
         if (t == null) return null;
         TOMBSTONE_IDS.remove(t.id);
@@ -482,7 +478,7 @@ public final class ClientMessageIndex {
         }
     }
 
-    /** Own messages newest → oldest (index 0 = most recent chat line). */
+    /** Own messages newest → oldest (index 0 = most recent). */
     public static List<ClientTrackedMessage> listOwned(UUID self) {
         List<ClientTrackedMessage> owned = new ArrayList<>();
         if (self == null) return owned;
@@ -569,6 +565,33 @@ public final class ClientMessageIndex {
         List<ClientTrackedMessage> ordered = listSamePlainNewestFirst(sender, plain);
         if (rank < 0 || rank >= ordered.size()) return null;
         return ordered.get(rank);
+    }
+
+    /**
+     * Locate a tracked row for a remote delete when the server id was never bound.
+     * Prefers a unique plain match for the sender; if several twins exist, returns null
+     * (caller falls back to HUD wipe of one line).
+     */
+    public static ClientTrackedMessage findBestForRemote(UUID sender, String plain) {
+        if (plain == null || plain.isBlank()) return null;
+        String want = stripEditedBadge(plain.trim());
+        List<ClientTrackedMessage> hits = new ArrayList<>();
+        for (ClientTrackedMessage m : BY_ID.values()) {
+            if (m == null || m.deleting || isTombstoned(m)) continue;
+            if (sender != null && !sender.equals(m.sender)) continue;
+            String p = m.plainText == null ? "" : stripEditedBadge(m.plainText);
+            if (want.equals(p)) hits.add(m);
+        }
+        if (hits.isEmpty()) return null;
+        if (hits.size() == 1) return hits.get(0);
+        // Prefer a server-id row (newest id first)
+        hits.sort((a, b) -> {
+            if (a.id >= 0 && b.id >= 0) return Long.compare(b.id, a.id);
+            if (a.id >= 0) return -1;
+            if (b.id >= 0) return 1;
+            return Integer.compare(b.addedTime, a.addedTime);
+        });
+        return hits.get(0);
     }
 
     public static Iterable<ClientTrackedMessage> all() {

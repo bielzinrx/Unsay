@@ -16,16 +16,23 @@ public final class UnsendClient {
     }
 
     public static void handleDelete(long messageId) {
-        UnsendHud.onDeleteBroadcast(messageId);
+        handleDelete(messageId, null, null);
+    }
+
+    public static void handleDelete(long messageId, UUID sender, String plainText) {
+        UnsendHud.onDeleteBroadcast(messageId, sender, plainText);
     }
 
     public static void handleEdit(long messageId, String newText) {
         if (ClientMessageIndex.isTombstoned(messageId)) return;
         var tracked = ClientMessageIndex.get(messageId);
         if (tracked == null || tracked.deleting || ClientMessageIndex.isTombstoned(tracked)) {
+            // Still try HUD wipe/edit by id alone is impossible without text; skip
             return;
         }
-        ClientMessageIndex.applyEdit(messageId, newText);
+        // Capture pin BEFORE plainText changes so multi-identical lines stay correct
+        var pin = ChatHudEditor.capturePin(tracked);
+        ClientMessageIndex.applyEdit(messageId, newText, pin);
     }
 
     public static void handleEdit(Packets.EditPayload payload) {

@@ -18,12 +18,41 @@ public final class Packets {
         return new RegisterPayload(buf.readLong(), buf.readUUID(), buf.readUtf(64), buf.readUtf(256));
     }
 
-    public static void writeDelete(FriendlyByteBuf buf, long messageId) {
+    /** C2S: only the server message id. */
+    public static void writeDeleteC2S(FriendlyByteBuf buf, long messageId) {
         buf.writeLong(messageId);
     }
 
-    public static long readDelete(FriendlyByteBuf buf) {
+    public static long readDeleteC2S(FriendlyByteBuf buf) {
         return buf.readLong();
+    }
+
+    /**
+     * S2C: id + identity hints so other clients can wipe the HUD even when they
+     * never bound the server id (register race / late join).
+     */
+    public static void writeDeleteS2C(FriendlyByteBuf buf, long messageId, UUID sender, String plainText) {
+        buf.writeLong(messageId);
+        buf.writeBoolean(sender != null);
+        if (sender != null) buf.writeUUID(sender);
+        buf.writeUtf(plainText == null ? "" : plainText, 256);
+    }
+
+    public static DeleteS2CPayload readDeleteS2C(FriendlyByteBuf buf) {
+        long id = buf.readLong();
+        UUID sender = buf.readBoolean() ? buf.readUUID() : null;
+        String plain = buf.readUtf(256);
+        return new DeleteS2CPayload(id, sender, plain);
+    }
+
+    /** @deprecated use writeDeleteC2S / writeDeleteS2C */
+    public static void writeDelete(FriendlyByteBuf buf, long messageId) {
+        writeDeleteC2S(buf, messageId);
+    }
+
+    /** @deprecated use readDeleteC2S */
+    public static long readDelete(FriendlyByteBuf buf) {
+        return readDeleteC2S(buf);
     }
 
     public static void writeEdit(FriendlyByteBuf buf, long messageId, String newText) {
@@ -48,6 +77,8 @@ public final class Packets {
     }
 
     public record RegisterPayload(long messageId, UUID sender, String senderName, String plainText) {}
+
+    public record DeleteS2CPayload(long messageId, UUID sender, String plainText) {}
 
     public record EditPayload(long messageId, String newText) {}
 

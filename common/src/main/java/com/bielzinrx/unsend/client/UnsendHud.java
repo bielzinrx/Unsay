@@ -240,7 +240,8 @@ public final class UnsendHud {
                 case REPLY -> { UnsendComposer.beginReply(t); yield true; }
                 case EDIT -> {
                     if (t.deleting) yield true;
-                    UnsendComposer.beginEdit(t, screen);
+                    // Pass HUD pin so edit hits THIS line, not the last edited twin
+                    UnsendComposer.beginEdit(t, screen, h.pin);
                     yield true;
                 }
                 case DELETE -> deleteOne(t, h.x, h.y, h.pin);
@@ -333,8 +334,12 @@ public final class UnsendHud {
     }
 
     public static void onDeleteBroadcast(long messageId) {
+        onDeleteBroadcast(messageId, null, null);
+    }
+
+    public static void onDeleteBroadcast(long messageId, java.util.UUID sender, String plainText) {
         UnsendComposer.onMessageDeleted(messageId);
-        ClientDelete.applyRemoteDelete(messageId);
+        ClientDelete.applyRemoteDelete(messageId, sender, plainText);
     }
 
     /** Soft selection wash + 2px left accent. */

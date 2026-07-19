@@ -83,17 +83,32 @@ public final class UnsendComposer {
         historyIndex = -1;
         editPin = null;
         replying = true;
-        replyToId = resolveServerId(target.id);
+        // Keep exact server id when present — do not re-resolve by plain text
+        if (target.id >= 0) {
+            replyToId = target.id;
+        } else {
+            long resolved = resolveServerId(target.id);
+            replyToId = resolved;
+        }
         replyAuthor = target.senderName != null && !target.senderName.isEmpty()
             ? target.senderName
             : shortUuid(target.sender);
+        // Full plain for server citation (not another twin)
         String t = target.plainText == null ? "" : target.plainText.replace('\n', ' ').strip();
-        replyPreview = t;
+        replyPreview = ClientMessageIndex.stripEditedBadge(t);
     }
 
     public static boolean beginEdit(ClientTrackedMessage target, ChatScreen screen) {
+        return beginEdit(target, screen, null);
+    }
+
+    public static boolean beginEdit(ClientTrackedMessage target, ChatScreen screen, HudPin forcedPin) {
         if (target == null || target.deleting || !isEditableTarget(target.id)) {
             return false;
+        }
+        // Prefer the exact HUD pin from the clicked icon when present
+        if (forcedPin != null && forcedPin.isValid()) {
+            return beginEditWithPin(target, forcedPin, -1, screen);
         }
         List<HudOwnLine> hud = ChatHudEditor.listOwnHudLines();
         HudOwnLine match = findHudLineForTracked(hud, target);
