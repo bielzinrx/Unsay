@@ -13,14 +13,14 @@ import net.minecraft.network.FriendlyByteBuf;
 public final class UnsendFabricClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
-        FabricPlatformHelper.setClientDeleteSender(messageId -> {
+        FabricPlatformHelper.setClientDeleteSender((messageId, plainFallback) -> {
             FriendlyByteBuf buf = PacketByteBufs.create();
-            Packets.writeDeleteC2S(buf, messageId);
+            Packets.writeDeleteC2S(buf, messageId, plainFallback);
             ClientPlayNetworking.send(PacketIds.DELETE_C2S, buf);
         });
         FabricPlatformHelper.setClientEditSender((messageId, text) -> {
             FriendlyByteBuf buf = PacketByteBufs.create();
-            Packets.writeEdit(buf, messageId, text);
+            Packets.writeEditC2S(buf, messageId, text);
             ClientPlayNetworking.send(PacketIds.EDIT_C2S, buf);
         });
         FabricPlatformHelper.setClientReplySender((targetId, text, targetName, targetPreview) -> {
@@ -40,8 +40,19 @@ public final class UnsendFabricClient implements ClientModInitializer {
         });
 
         ClientPlayNetworking.registerGlobalReceiver(PacketIds.EDIT_S2C, (client, handler, buf, responseSender) -> {
-            Packets.EditPayload payload = Packets.readEdit(buf);
-            client.execute(() -> UnsendClient.handleEdit(payload));
+            Packets.EditS2CPayload payload = Packets.readEditS2C(buf);
+            client.execute(() -> UnsendClient.handleEdit(
+                payload.messageId(), payload.newText(), payload.oldPlain(), payload.sender()));
+        });
+
+        ClientPlayNetworking.registerGlobalReceiver(PacketIds.SNAPSHOT_S2C, (client, handler, buf, responseSender) -> {
+            Packets.SnapshotPayload payload = Packets.readSnapshot(buf);
+            client.execute(() -> UnsendClient.handleSnapshot(payload));
+        });
+
+        ClientPlayNetworking.registerGlobalReceiver(PacketIds.RESULT_S2C, (client, handler, buf, responseSender) -> {
+            Packets.ResultPayload payload = Packets.readResult(buf);
+            client.execute(() -> UnsendClient.handleResult(payload.ok(), payload.messageKey()));
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) ->

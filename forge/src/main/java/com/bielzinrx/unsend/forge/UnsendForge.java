@@ -7,8 +7,10 @@ import com.bielzinrx.unsend.platform.Platform;
 import com.bielzinrx.unsend.server.UnsendServer;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.ServerChatEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -19,7 +21,7 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 @Mod(Unsend.MOD_ID)
 public final class UnsendForge {
     public UnsendForge() {
-        // Before any chat event: ServiceLoader on FJP workers cannot see META-INF/services.
+        
         Platform.bootstrap(new ForgePlatformHelper());
         IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
         modBus.addListener(this::commonSetup);
@@ -51,5 +53,12 @@ public final class UnsendForge {
     @SubscribeEvent
     public void onServerChat(ServerChatEvent event) {
         UnsendServer.onPlayerChat(event.getPlayer(), event.getRawText());
+    }
+
+    @SubscribeEvent
+    public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            UnsendServer.onPlayerJoin(player);
+        }
     }
 }

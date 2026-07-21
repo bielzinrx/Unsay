@@ -9,6 +9,7 @@ import com.bielzinrx.unsend.server.UnsendServer;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
 public final class UnsendFabric implements ModInitializer {
@@ -20,13 +21,16 @@ public final class UnsendFabric implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTING.register(Unsend::setServer);
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> Unsend.onServerStop());
 
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
+            server.execute(() -> UnsendServer.onPlayerJoin(handler.player)));
+
         ServerPlayNetworking.registerGlobalReceiver(PacketIds.DELETE_C2S, (server, player, handler, buf, responseSender) -> {
-            long messageId = Packets.readDeleteC2S(buf);
-            server.execute(() -> UnsendServer.onDeleteRequest(player, messageId));
+            Packets.DeleteC2SPayload payload = Packets.readDeleteC2S(buf);
+            server.execute(() -> UnsendServer.onDeleteRequest(player, payload.messageId(), payload.plainFallback()));
         });
 
         ServerPlayNetworking.registerGlobalReceiver(PacketIds.EDIT_C2S, (server, player, handler, buf, responseSender) -> {
-            Packets.EditPayload payload = Packets.readEdit(buf);
+            Packets.EditC2SPayload payload = Packets.readEditC2S(buf);
             server.execute(() -> UnsendServer.onEditRequest(player, payload.messageId(), payload.newText()));
         });
 
