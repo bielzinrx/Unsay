@@ -38,22 +38,41 @@ public final class UnsendClient {
         if (tracked == null && oldPlain != null && !oldPlain.isBlank()) {
             tracked = ClientMessageIndex.findBestForRemote(sender, oldPlain);
             if (tracked != null && tracked.id < 0) {
-                // Promote provisional to server id for future packets
                 ClientMessageIndex.promoteToServerId(tracked, messageId, sender, oldPlain);
                 tracked = ClientMessageIndex.get(messageId);
             }
         }
         if (tracked == null || tracked.deleting || ClientMessageIndex.isTombstoned(tracked)) {
-            // Last resort: synthetic track so HUD can still update
             if (oldPlain != null && !oldPlain.isBlank() && newText != null && !newText.isBlank()) {
                 ClientMessageIndex.applyRemoteEditLoose(sender, oldPlain, newText, messageId);
             }
             return;
         }
+
+        // Local optimistic apply already ran → S2C must NOT re-match among remaining
+        // identical "aaa" twins (would also edit the line above).
+        String cur = tracked.plainText == null ? "" : tracked.plainText;
+        if (tracked.edited && newText != null && newText.equals(cur)) {
+            return;
+        }
+
+        // Keep the signature we already bound (local apply) — stronger than re-rank
+        var keepSig = tracked.signature;
+        int keepTick = tracked.addedTime;
+        String matchPlain = (oldPlain != null && !oldPlain.isBlank()) ? oldPlain : cur;
         if (oldPlain != null && !oldPlain.isBlank()) {
             tracked.plainText = oldPlain;
         }
         HudPin pin = ChatHudEditor.capturePin(tracked);
+        if (keepSig != null || keepTick != Integer.MIN_VALUE) {
+            pin = new HudPin(
+                pin != null ? pin.rank : -1,
+                keepTick != Integer.MIN_VALUE ? keepTick : (pin != null ? pin.addedTime : Integer.MIN_VALUE),
+                keepSig != null ? keepSig : (pin != null ? pin.signature : null),
+                pin != null ? pin.fullLine : null,
+                matchPlain
+            );
+        }
         ClientMessageIndex.applyEdit(messageId, newText, pin);
     }
 
