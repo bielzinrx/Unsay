@@ -97,6 +97,7 @@ public final class ClientDelete {
 
         tracked.deleting = true;
         long id = tracked.id;
+        String plainSnap = tracked.plainText == null ? "" : tracked.plainText;
         UnsendComposer.onMessageDeleted(id);
 
         String animText = tracked.displayContent != null
@@ -119,15 +120,13 @@ public final class ClientDelete {
         DeleteAnimation.start(animText, fromX, fromY, trashX, trashY, null);
 
         if (notifyServer) {
-            if (id >= 0) {
-                Platform.get().sendDeleteRequestToServer(id);
-            } else {
-                // Provisional only: still try to resolve one more time after pin-based HUD wipe
+            long sendId = id;
+            if (sendId < 0) {
                 long late = resolveServer(snap).id;
-                if (late >= 0) {
-                    Platform.get().sendDeleteRequestToServer(late);
-                }
+                if (late >= 0) sendId = late;
             }
+            // Always send plain fallback so server can resolve provisional / race cases
+            Platform.get().sendDeleteRequestToServer(sendId, plainSnap);
         }
     }
 

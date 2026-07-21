@@ -14,6 +14,12 @@
   "unsend.status.editing": "Editing…  (Esc to cancel)",
   "unsend.status.replying": "%s  (Esc to cancel)",
   "unsend.message.deleted_placeholder": "message deleted",
+  "unsend.error.rate_limit": "Slow down — try again in a moment",
+  "unsend.error.not_found": "Message not found or already gone",
+  "unsend.error.already_gone": "Message already deleted",
+  "unsend.error.empty": "Empty message",
+  "unsend.result.deleted": "Deleted",
+  "unsend.result.edited": "Edited",
   "modmenu.nameTranslation.unsend": "Unsay",
   "modmenu.descriptionTranslation.unsend": "Delete, edit and reply to chat messages. Hold Shift on your message."
 }

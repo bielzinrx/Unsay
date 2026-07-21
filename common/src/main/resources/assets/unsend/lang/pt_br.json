@@ -14,6 +14,12 @@
   "unsend.status.editing": "Editando…  (Esc para cancelar)",
   "unsend.status.replying": "%s  (Esc para cancelar)",
   "unsend.message.deleted_placeholder": "mensagem apagada",
+  "unsend.error.rate_limit": "Calma — tenta de novo em instantes",
+  "unsend.error.not_found": "Mensagem não encontrada ou já apagada",
+  "unsend.error.already_gone": "Mensagem já foi apagada",
+  "unsend.error.empty": "Mensagem vazia",
+  "unsend.result.deleted": "Apagada",
+  "unsend.result.edited": "Editada",
   "modmenu.nameTranslation.unsend": "Unsay",
   "modmenu.descriptionTranslation.unsend": "Apague, edite e responda mensagens do chat. Segure Shift na sua mensagem."
 }

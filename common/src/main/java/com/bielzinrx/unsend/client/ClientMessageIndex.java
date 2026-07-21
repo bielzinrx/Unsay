@@ -186,6 +186,77 @@ public final class ClientMessageIndex {
         PENDING.addLast(new PendingRegistration(messageId, sender, senderName, plainText, System.currentTimeMillis()));
     }
 
+    /** Login snapshot: seed BY_ID and bind to any matching HUD lines already on screen. */
+    public static void applySnapshot(List<com.bielzinrx.unsend.network.Packets.SnapshotEntry> entries) {
+        if (entries == null || entries.isEmpty()) return;
+        // Apply oldest-first so FIFO provisional merge stays stable if any race
+        List<com.bielzinrx.unsend.network.Packets.SnapshotEntry> ordered = new ArrayList<>(entries);
+        ordered.sort((a, b) -> Long.compare(a.messageId(), b.messageId()));
+        for (com.bielzinrx.unsend.network.Packets.SnapshotEntry e : ordered) {
+            if (e == null || isTombstoned(e.messageId())) continue;
+            if (BY_ID.containsKey(e.messageId())) {
+                ClientTrackedMessage existing = BY_ID.get(e.messageId());
+                if (existing != null && e.edited()) existing.edited = true;
+                continue;
+            }
+            onRegisterPacket(e.messageId(), e.sender(), e.senderName(), e.plainText());
+            ClientTrackedMessage m = BY_ID.get(e.messageId());
+            if (m != null && e.edited()) m.edited = true;
+        }
+    }
+
+    public static void promoteToServerId(ClientTrackedMessage provisional, long serverId,
+                                         UUID sender, String plainText) {
+        if (provisional == null || serverId < 0) return;
+        if (isTombstoned(serverId)) return;
+        ClientTrackedMessage merged = new ClientTrackedMessage(
+            serverId,
+            sender != null ? sender : provisional.sender,
+            provisional.senderName,
+            plainText != null ? plainText : provisional.plainText,
+            provisional.signature,
+            provisional.addedTime,
+            provisional.displayContent
+        );
+        merged.edited = provisional.edited;
+        BY_ID.put(serverId, merged);
+        BY_ID.remove(provisional.id);
+        UnsendComposer.remapTrackedId(provisional.id, serverId);
+    }
+
+    /** Edit when we have no tracked row: match HUD by old plain + sender name. */
+    public static void applyRemoteEditLoose(UUID sender, String oldPlain, String newText, long serverId) {
+        if (oldPlain == null || newText == null || newText.isBlank()) return;
+        Minecraft mc = Minecraft.getInstance();
+        String name = null;
+        if (sender != null && mc.getConnection() != null) {
+            var info = mc.getConnection().getPlayerInfo(sender);
+            if (info != null) name = info.getProfile().getName();
+        }
+        long id = serverId >= 0 ? serverId : LOCAL_IDS.getAndDecrement();
+        if (BY_ID.containsKey(id) || isTombstoned(id)) {
+            ClientTrackedMessage t = BY_ID.get(id);
+            if (t != null) {
+                ChatHudEditor.HudPin pin = ChatHudEditor.capturePin(t);
+                t.plainText = oldPlain;
+                applyEdit(id, newText, pin);
+            }
+            return;
+        }
+        ClientTrackedMessage synthetic = new ClientTrackedMessage(
+            id,
+            sender != null ? sender : (mc.player != null ? mc.player.getUUID() : new UUID(0, 0)),
+            name != null ? name : "?",
+            oldPlain,
+            null,
+            Integer.MIN_VALUE,
+            null
+        );
+        BY_ID.put(id, synthetic);
+        ChatHudEditor.HudPin pin = ChatHudEditor.capturePin(synthetic);
+        applyEdit(id, newText, pin);
+    }
+
     /** Oldest provisional with this exact body (FIFO). */
     private static ClientTrackedMessage findProvisional(UUID sender, String plainText) {
         if (plainText == null) return null;

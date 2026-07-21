@@ -14,6 +14,12 @@
   "unsend.status.editing": "Editando…  (Esc para cancelar)",
   "unsend.status.replying": "%s  (Esc para cancelar)",
   "unsend.message.deleted_placeholder": "mensaje eliminado",
+  "unsend.error.rate_limit": "Más despacio — inténtalo en un momento",
+  "unsend.error.not_found": "Mensaje no encontrado o ya eliminado",
+  "unsend.error.already_gone": "Mensaje ya eliminado",
+  "unsend.error.empty": "Mensaje vacío",
+  "unsend.result.deleted": "Eliminado",
+  "unsend.result.edited": "Editado",
   "modmenu.nameTranslation.unsend": "Unsay",
   "modmenu.descriptionTranslation.unsend": "Elimina, edita y responde mensajes del chat. Mantén Shift en tu mensaje."
 }

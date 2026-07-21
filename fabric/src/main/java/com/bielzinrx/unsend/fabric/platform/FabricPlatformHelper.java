@@ -9,23 +9,27 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.function.BiConsumer;
-import java.util.function.LongConsumer;
 
 public final class FabricPlatformHelper implements IPlatformHelper {
-    private static LongConsumer clientDeleteSender = id -> {};
-    private static BiConsumer<Long, String> clientEditSender = (id, text) -> {};
+    @FunctionalInterface
+    public interface DeleteSender {
+        void send(long messageId, String plainFallback);
+    }
 
     @FunctionalInterface
     public interface ReplySender {
         void send(long targetId, String text, String targetName, String targetPreview);
     }
 
+    private static DeleteSender clientDeleteSender = (id, plain) -> {};
+    private static BiConsumer<Long, String> clientEditSender = (id, text) -> {};
     private static ReplySender clientReplySender = (id, text, name, preview) -> {};
 
-    public static void setClientDeleteSender(LongConsumer sender) {
-        clientDeleteSender = sender != null ? sender : id -> {};
+    public static void setClientDeleteSender(DeleteSender sender) {
+        clientDeleteSender = sender != null ? sender : (id, plain) -> {};
     }
 
     public static void setClientEditSender(BiConsumer<Long, String> sender) {
@@ -42,8 +46,8 @@ public final class FabricPlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public void sendDeleteRequestToServer(long messageId) {
-        clientDeleteSender.accept(messageId);
+    public void sendDeleteRequestToServer(long messageId, String plainFallback) {
+        clientDeleteSender.send(messageId, plainFallback);
     }
 
     @Override
@@ -64,16 +68,30 @@ public final class FabricPlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public void sendDeleteBroadcast(ServerPlayer target, long messageId, java.util.UUID sender, String plainText) {
+    public void sendDeleteBroadcast(ServerPlayer target, long messageId, UUID sender, String plainText) {
         FriendlyByteBuf buf = PacketByteBufs.create();
         Packets.writeDeleteS2C(buf, messageId, sender, plainText);
         ServerPlayNetworking.send(target, PacketIds.DELETE_S2C, buf);
     }
 
     @Override
-    public void sendEditBroadcast(ServerPlayer target, long messageId, String newText) {
+    public void sendEditBroadcast(ServerPlayer target, long messageId, String newText, String oldPlain, UUID sender) {
         FriendlyByteBuf buf = PacketByteBufs.create();
-        Packets.writeEdit(buf, messageId, newText);
+        Packets.writeEditS2C(buf, messageId, newText, oldPlain, sender);
         ServerPlayNetworking.send(target, PacketIds.EDIT_S2C, buf);
+    }
+
+    @Override
+    public void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries) {
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        Packets.writeSnapshot(buf, entries);
+        ServerPlayNetworking.send(target, PacketIds.SNAPSHOT_S2C, buf);
+    }
+
+    @Override
+    public void sendResult(ServerPlayer target, boolean ok, String messageKey) {
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        Packets.writeResult(buf, ok, messageKey);
+        ServerPlayNetworking.send(target, PacketIds.RESULT_S2C, buf);
     }
 }

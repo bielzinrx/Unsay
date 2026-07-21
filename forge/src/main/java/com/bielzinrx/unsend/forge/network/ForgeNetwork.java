@@ -15,12 +15,13 @@ import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
 
 public final class ForgeNetwork {
-    private static final String PROTOCOL = "4";
+    private static final String PROTOCOL = "5";
     private static SimpleChannel CHANNEL;
     private static int id;
 
@@ -47,10 +48,14 @@ public final class ForgeNetwork {
             EditS2C::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
         CHANNEL.registerMessage(id++, ReplyC2S.class, ReplyC2S::encode, ReplyC2S::decode,
             ReplyC2S::handle, Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(id++, SnapshotS2C.class, SnapshotS2C::encode, SnapshotS2C::decode,
+            SnapshotS2C::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CHANNEL.registerMessage(id++, ResultS2C.class, ResultS2C::encode, ResultS2C::decode,
+            ResultS2C::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
     }
 
-    public static void sendDeleteToServer(long messageId) {
-        CHANNEL.sendToServer(new DeleteC2S(messageId));
+    public static void sendDeleteToServer(long messageId, String plainFallback) {
+        CHANNEL.sendToServer(new DeleteC2S(messageId, plainFallback));
     }
 
     public static void sendEditToServer(long messageId, String newText) {
@@ -70,8 +75,16 @@ public final class ForgeNetwork {
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> target), new DeleteS2C(messageId, sender, plainText));
     }
 
-    public static void sendEdit(ServerPlayer target, long messageId, String newText) {
-        CHANNEL.send(PacketDistributor.PLAYER.with(() -> target), new EditS2C(messageId, newText));
+    public static void sendEdit(ServerPlayer target, long messageId, String newText, String oldPlain, UUID sender) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> target), new EditS2C(messageId, newText, oldPlain, sender));
+    }
+
+    public static void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> target), new SnapshotS2C(entries));
+    }
+
+    public static void sendResult(ServerPlayer target, boolean ok, String messageKey) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> target), new ResultS2C(ok, messageKey));
     }
 
     public record RegisterMessage(long messageId, UUID sender, String senderName, String plainText) {
@@ -92,20 +105,21 @@ public final class ForgeNetwork {
         }
     }
 
-    public record DeleteC2S(long messageId) {
+    public record DeleteC2S(long messageId, String plainFallback) {
         public static void encode(DeleteC2S msg, FriendlyByteBuf buf) {
-            Packets.writeDeleteC2S(buf, msg.messageId);
+            Packets.writeDeleteC2S(buf, msg.messageId, msg.plainFallback);
         }
 
         public static DeleteC2S decode(FriendlyByteBuf buf) {
-            return new DeleteC2S(Packets.readDeleteC2S(buf));
+            Packets.DeleteC2SPayload p = Packets.readDeleteC2S(buf);
+            return new DeleteC2S(p.messageId(), p.plainFallback());
         }
 
         public static void handle(DeleteC2S msg, Supplier<NetworkEvent.Context> ctx) {
             NetworkEvent.Context c = ctx.get();
             c.enqueueWork(() -> {
                 ServerPlayer player = c.getSender();
-                if (player != null) UnsendServer.onDeleteRequest(player, msg.messageId);
+                if (player != null) UnsendServer.onDeleteRequest(player, msg.messageId, msg.plainFallback);
             });
             c.setPacketHandled(true);
         }
@@ -131,11 +145,11 @@ public final class ForgeNetwork {
 
     public record EditC2S(long messageId, String newText) {
         public static void encode(EditC2S msg, FriendlyByteBuf buf) {
-            Packets.writeEdit(buf, msg.messageId, msg.newText);
+            Packets.writeEditC2S(buf, msg.messageId, msg.newText);
         }
 
         public static EditC2S decode(FriendlyByteBuf buf) {
-            Packets.EditPayload p = Packets.readEdit(buf);
+            Packets.EditC2SPayload p = Packets.readEditC2S(buf);
             return new EditC2S(p.messageId(), p.newText());
         }
 
@@ -149,20 +163,20 @@ public final class ForgeNetwork {
         }
     }
 
-    public record EditS2C(long messageId, String newText) {
+    public record EditS2C(long messageId, String newText, String oldPlain, UUID sender) {
         public static void encode(EditS2C msg, FriendlyByteBuf buf) {
-            Packets.writeEdit(buf, msg.messageId, msg.newText);
+            Packets.writeEditS2C(buf, msg.messageId, msg.newText, msg.oldPlain, msg.sender);
         }
 
         public static EditS2C decode(FriendlyByteBuf buf) {
-            Packets.EditPayload p = Packets.readEdit(buf);
-            return new EditS2C(p.messageId(), p.newText());
+            Packets.EditS2CPayload p = Packets.readEditS2C(buf);
+            return new EditS2C(p.messageId(), p.newText(), p.oldPlain(), p.sender());
         }
 
         public static void handle(EditS2C msg, Supplier<NetworkEvent.Context> ctx) {
             ctx.get().enqueueWork(() ->
                 DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
-                    UnsendClient.handleEdit(msg.messageId, msg.newText)));
+                    UnsendClient.handleEdit(msg.messageId, msg.newText, msg.oldPlain, msg.sender)));
             ctx.get().setPacketHandled(true);
         }
     }
@@ -186,6 +200,41 @@ public final class ForgeNetwork {
                 }
             });
             c.setPacketHandled(true);
+        }
+    }
+
+    public record SnapshotS2C(List<Packets.SnapshotEntry> entries) {
+        public static void encode(SnapshotS2C msg, FriendlyByteBuf buf) {
+            Packets.writeSnapshot(buf, msg.entries);
+        }
+
+        public static SnapshotS2C decode(FriendlyByteBuf buf) {
+            return new SnapshotS2C(Packets.readSnapshot(buf).entries());
+        }
+
+        public static void handle(SnapshotS2C msg, Supplier<NetworkEvent.Context> ctx) {
+            ctx.get().enqueueWork(() ->
+                DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
+                    UnsendClient.handleSnapshot(new Packets.SnapshotPayload(msg.entries))));
+            ctx.get().setPacketHandled(true);
+        }
+    }
+
+    public record ResultS2C(boolean ok, String messageKey) {
+        public static void encode(ResultS2C msg, FriendlyByteBuf buf) {
+            Packets.writeResult(buf, msg.ok, msg.messageKey);
+        }
+
+        public static ResultS2C decode(FriendlyByteBuf buf) {
+            Packets.ResultPayload p = Packets.readResult(buf);
+            return new ResultS2C(p.ok(), p.messageKey());
+        }
+
+        public static void handle(ResultS2C msg, Supplier<NetworkEvent.Context> ctx) {
+            ctx.get().enqueueWork(() ->
+                DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
+                    UnsendClient.handleResult(msg.ok, msg.messageKey)));
+            ctx.get().setPacketHandled(true);
         }
     }
 }

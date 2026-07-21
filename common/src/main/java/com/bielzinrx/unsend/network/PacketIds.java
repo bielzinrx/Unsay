@@ -9,6 +9,8 @@ public final class PacketIds {
     public static final ResourceLocation EDIT_C2S = new ResourceLocation("unsend", "edit_c2s");
     public static final ResourceLocation EDIT_S2C = new ResourceLocation("unsend", "edit_s2c");
     public static final ResourceLocation REPLY_C2S = new ResourceLocation("unsend", "reply_c2s");
+    public static final ResourceLocation SNAPSHOT_S2C = new ResourceLocation("unsend", "snapshot_s2c");
+    public static final ResourceLocation RESULT_S2C = new ResourceLocation("unsend", "result_s2c");
 
     private PacketIds() {}
 }
