@@ -209,6 +209,31 @@ public final class ChatHudEditor {
         MessageSignature forcedSig = pin != null ? pin.signature : null;
         String pinFull = pin != null ? pin.fullLine : null;
 
+        // 1) Unique signature wins (never apply to two identical bodies)
+        if (forcedSig != null) {
+            int only = -1;
+            int hits = 0;
+            for (int i = 0; i < all.size(); i++) {
+                if (forcedSig.equals(all.get(i).headerSignature())) {
+                    only = i;
+                    hits++;
+                }
+            }
+            if (hits == 1) return only;
+        }
+        if (tracked != null && tracked.signature != null) {
+            int only = -1;
+            int hits = 0;
+            for (int i = 0; i < all.size(); i++) {
+                if (tracked.signature.equals(all.get(i).headerSignature())) {
+                    only = i;
+                    hits++;
+                }
+            }
+            if (hits == 1) return only;
+        }
+
+        // 2) Unique full-line pin (or rank among exact full-line twins)
         if (pinFull != null && !pinFull.isEmpty()) {
             List<Integer> exact = new ArrayList<>();
             for (int i = 0; i < all.size(); i++) {
@@ -220,14 +245,9 @@ public final class ChatHudEditor {
             }
         }
 
-        if (forcedSig != null) {
-            for (int i = 0; i < all.size(); i++) {
-                if (forcedSig.equals(all.get(i).headerSignature())) return i;
-            }
-        }
-
         if (plain == null || plain.isEmpty()) return -1;
 
+        // 3) Own same-plain, newest-first — rank pin is authoritative for 3× identical text
         List<Integer> ownSame = listOwnSamePlainIndices(all, plain, self, selfName);
         if (ownSame.isEmpty()) {
             for (int i = 0; i < all.size(); i++) {
@@ -256,14 +276,14 @@ public final class ChatHudEditor {
             if (hits == 1) return only;
         }
 
-        if (tracked != null && tracked.signature != null) {
-            for (int ci : ownSame) {
-                if (tracked.signature.equals(all.get(ci).headerSignature())) return ci;
-            }
-        }
-
         int rank = ClientMessageIndex.rankAmongSamePlain(tracked);
         if (rank >= 0 && rank < ownSame.size()) return ownSame.get(rank);
+
+        // Ambiguous identical bodies without pin/sig — refuse rather than edit the wrong twin
+        // (caller already optimistically applied locally when possible).
+        if (forcedRank < 0 && forcedSig == null && (tracked == null || tracked.signature == null)) {
+            return -1;
+        }
 
         int best = ownSame.get(0);
         int bestDiff = tick == Integer.MIN_VALUE
