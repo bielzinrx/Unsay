@@ -112,3 +112,40 @@ Requires **JDK 17 or newer**.
 
 ```bash
 ./gradlew build
+```
+
+Build outputs:
+
+```text
+fabric/build/libs/Unsay-<minecraft>-Fabric-<version>.jar
+forge/build/libs/Unsay-<minecraft>-Forge-<version>.jar
+```
+
+---
+
+## Reporting bugs
+
+When reporting a problem, include:
+
+- Unsay version
+- Minecraft version
+- Fabric or Forge
+- Singleplayer or multiplayer
+- Relevant client and server logs
+- Steps required to reproduce the issue
+
+Reports involving duplicate messages, custom chat formatting, edited replies, or multiplayer synchronization are especially useful during beta development.
+
+---
+
+## Project information
+
+- **Display name:** Unsay
+- **Internal mod ID:** `unsend`
+- **License:** MIT
+
+The internal mod ID should not be changed without a migration plan.
+
+---
+
+*Unsay — take back what you said.*
