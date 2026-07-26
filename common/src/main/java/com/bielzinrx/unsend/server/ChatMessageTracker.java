@@ -20,14 +20,13 @@ public final class ChatMessageTracker {
     private static final AtomicLong NEXT_ID = new AtomicLong(1L);
     private static final Map<Long, TrackedChatMessage> MESSAGES = new ConcurrentHashMap<>();
     private static final Map<Long, Long> DELETED_AT_MS = new ConcurrentHashMap<>();
-    /** player uuid → last action timestamps (ms) for rate limiting */
     private static final Map<UUID, ActionBucket> RATE = new ConcurrentHashMap<>();
 
     private static final int MAX_TRACKED = 512;
     private static final long MAX_AGE_MS = 30 * 60 * 1000L;
     private static final long TOMBSTONE_TTL_MS = 30 * 60 * 1000L;
     private static final int MAX_TEXT = 256;
-    private static final int SNAPSHOT_MAX = 64;
+    private static final int SNAPSHOT_MAX = 200;
 
     private static final int RATE_WINDOW_MS = 10_000;
     private static final int RATE_DELETE = 8;
@@ -81,6 +80,7 @@ public final class ChatMessageTracker {
 
     public static boolean requestDelete(ServerPlayer requester, long messageId, String plainFallback) {
         if (requester == null) return false;
+        prune();
         if (!allow(requester.getUUID(), Action.DELETE)) {
             sendResult(requester, false, "unsend.error.rate_limit");
             return false;
@@ -118,6 +118,11 @@ public final class ChatMessageTracker {
 
     public static boolean requestEdit(ServerPlayer requester, long messageId, String newText) {
         if (requester == null) return false;
+        prune();
+        String text = sanitize(newText);
+        if (text.isEmpty()) {
+            return requestDelete(requester, messageId, null);
+        }
         if (!allow(requester.getUUID(), Action.EDIT)) {
             sendResult(requester, false, "unsend.error.rate_limit");
             return false;
@@ -131,11 +136,6 @@ public final class ChatMessageTracker {
             sendResult(requester, false, "unsend.error.not_found");
             return false;
         }
-        String text = sanitize(newText);
-        if (text.isEmpty()) {
-            return requestDelete(requester, messageId, msg.plainText);
-        }
-
         String oldPlain = msg.plainText == null ? "" : msg.plainText;
         UUID sender = msg.sender;
         msg.plainText = text;
@@ -155,6 +155,7 @@ public final class ChatMessageTracker {
     public static boolean requestReply(ServerPlayer sender, long targetId, String replyText,
                                        String fallbackName, String fallbackPreview) {
         if (sender == null) return false;
+        prune();
         if (!allow(sender.getUUID(), Action.REPLY)) {
             sendResult(sender, false, "unsend.error.rate_limit");
             return false;
@@ -167,19 +168,12 @@ public final class ChatMessageTracker {
 
         TrackedChatMessage target = targetId > 0 ? MESSAGES.get(targetId) : null;
 
-        String targetName;
-        String previewText;
-        if (target != null) {
-            targetName = target.senderName == null || target.senderName.isEmpty() ? "?" : target.senderName;
-            previewText = preview(target.plainText);
-        } else if (targetId > 0 && isDeleted(targetId)) {
-            targetName = (fallbackName != null && !fallbackName.isBlank()) ? fallbackName : "?";
-            previewText = Component.translatable("unsend.message.deleted_placeholder").getString();
-        } else {
-            targetName = (fallbackName != null && !fallbackName.isBlank()) ? fallbackName : "?";
-            String fp = fallbackPreview == null ? "" : fallbackPreview.strip();
-            previewText = fp.isEmpty() ? "…" : preview(fp);
+        if (target == null) {
+            sendResult(sender, false, "unsend.error.not_found");
+            return false;
         }
+        String targetName = target.senderName == null || target.senderName.isEmpty() ? "?" : target.senderName;
+        String previewText = preview(target.plainText);
 
         MutableComponent citation = Component.literal("  ↳ " + targetName + " · " + previewText)
             .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC);
@@ -196,7 +190,6 @@ public final class ChatMessageTracker {
         return true;
     }
 
-    /** Send recent tracked messages so a joining client can bind HUD lines. */
     public static void sendSnapshotTo(ServerPlayer player) {
         if (player == null) return;
         prune();
@@ -212,7 +205,6 @@ public final class ChatMessageTracker {
         Platform.get().sendSnapshot(player, entries);
     }
 
-    /** Prefer unique own plain match; if several, newest by createdAt. */
     private static TrackedChatMessage findOwnedByPlain(ServerPlayer requester, String plain) {
         String needle = sanitize(plain);
         if (needle.isEmpty() || requester == null) return null;
@@ -222,13 +214,11 @@ public final class ChatMessageTracker {
         for (TrackedChatMessage m : MESSAGES.values()) {
             if (m.plainText == null || !m.plainText.equals(needle)) continue;
             if (!self.equals(m.sender) && !requester.hasPermissions(2)) continue;
-            // non-OP: only own messages
             if (!self.equals(m.sender)) continue;
             hits++;
             if (best == null || m.createdAtMs > best.createdAtMs) best = m;
         }
-        // OP delete of others' identical text is ambiguous — require id
-        return hits >= 1 ? best : null;
+        return hits == 1 ? best : null;
     }
 
     private static void broadcastRegister(TrackedChatMessage msg) {

@@ -20,10 +20,8 @@ public final class UnsendComposer {
     private static long replyToId = -1L;
     private static String replyPreview = "";
     private static String replyAuthor = "";
-    /** Cursor in {@link ChatHudEditor#listOwnHudLines()} (newest → oldest). */
     private static int historyIndex = -1;
 
-    /** Fingerprint of the HUD line opened for edit (source of truth for identical bodies). */
     private static HudPin editPin = null;
 
     private UnsendComposer() {}
@@ -77,13 +75,12 @@ public final class UnsendComposer {
     }
 
     public static void beginReply(ClientTrackedMessage target) {
-        if (target == null || target.deleting) return;
+        if (target == null || target.deleting || target.pendingEdit) return;
         editing = false;
         editingId = -1L;
         historyIndex = -1;
         editPin = null;
         replying = true;
-        // Keep exact server id when present — do not re-resolve by plain text
         if (target.id >= 0) {
             replyToId = target.id;
         } else {
@@ -93,7 +90,6 @@ public final class UnsendComposer {
         replyAuthor = target.senderName != null && !target.senderName.isEmpty()
             ? target.senderName
             : shortUuid(target.sender);
-        // Full plain for server citation (not another twin)
         String t = target.plainText == null ? "" : target.plainText.replace('\n', ' ').strip();
         replyPreview = ClientMessageIndex.stripEditedBadge(t);
     }
@@ -103,10 +99,9 @@ public final class UnsendComposer {
     }
 
     public static boolean beginEdit(ClientTrackedMessage target, ChatScreen screen, HudPin forcedPin) {
-        if (target == null || target.deleting || !isEditableTarget(target.id)) {
+        if (target == null || target.deleting || target.pendingEdit || !isEditableTarget(target.id)) {
             return false;
         }
-        // Prefer the exact HUD pin from the clicked icon when present
         if (forcedPin != null && forcedPin.isValid()) {
             return beginEditWithPin(target, forcedPin, -1, screen);
         }
@@ -118,7 +113,6 @@ public final class UnsendComposer {
         return beginEditWithPin(target, ChatHudEditor.capturePin(target), -1, screen);
     }
 
-    /** Open edit on a concrete HUD line (navigation / pencil). */
     private static boolean beginEditFromHud(HudOwnLine line, int hudIndex, ChatScreen screen) {
         if (line == null || line.tracked == null) return false;
         if (line.tracked.deleting || ClientMessageIndex.isTombstoned(line.tracked)) return false;
@@ -138,7 +132,7 @@ public final class UnsendComposer {
 
     private static boolean beginEditWithPin(ClientTrackedMessage target, HudPin pin,
                                            int hudIndex, ChatScreen screen) {
-        if (target == null || target.deleting || !isEditableTarget(target.id)) {
+        if (target == null || target.deleting || target.pendingEdit || !isEditableTarget(target.id)) {
             return false;
         }
         replying = false;
@@ -180,14 +174,12 @@ public final class UnsendComposer {
         return true;
     }
 
-    /** Provisional local id was upgraded to a server id — keep edit/reply mode alive. */
     public static void remapTrackedId(long fromId, long toId) {
         if (fromId == toId) return;
         if (editing && editingId == fromId) editingId = toId;
         if (replying && replyToId == fromId) replyToId = toId;
     }
 
-    /** Navigate own messages for edit using the live HUD order (newest → oldest). */
     public static boolean tryNavigateOwnHistory(ChatScreen screen, int delta) {
         try {
             Minecraft mc = Minecraft.getInstance();
@@ -306,11 +298,20 @@ public final class UnsendComposer {
                     if (pin.signature != null) tracked.signature = pin.signature;
                 }
 
-                long applyId = id >= 0 ? id : localId;
+                if (id < 0) {
+                    showError("unsend.error.not_ready");
+                    return true;
+                }
+                if (!ClientActionState.beginEdit(tracked)) {
+                    showError("unsend.error.pending");
+                    return true;
+                }
                 clear();
-                ClientMessageIndex.applyEdit(applyId, text, pin);
-                if (id >= 0) {
+                try {
                     Platform.get().sendEditRequestToServer(id, text);
+                } catch (Throwable failure) {
+                    ClientActionState.onResult(false);
+                    showError("unsend.error.not_ready");
                 }
                 return true;
             }
@@ -335,6 +336,16 @@ public final class UnsendComposer {
         } catch (Throwable t) {
             clear();
             return true;
+        }
+    }
+
+    private static void showError(String key) {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc != null && mc.player != null) {
+                mc.player.displayClientMessage(Component.translatable(key), true);
+            }
+        } catch (Throwable ignored) {
         }
     }
 
@@ -399,7 +410,6 @@ public final class UnsendComposer {
         return -1;
     }
 
-    /** Newest-first rank among HUD own lines with the same plain as {@code line}. */
     private static int rankAmongSamePlainOnHud(List<HudOwnLine> hud, HudOwnLine line) {
         if (line == null || line.plain == null) return -1;
         int rank = 0;
@@ -438,13 +448,13 @@ public final class UnsendComposer {
         if (ClientMessageIndex.isTombstoned(id)) return false;
         ClientTrackedMessage t = ClientMessageIndex.get(id);
         if (t != null) {
-            return !t.deleting && !ClientMessageIndex.isTombstoned(t);
+            return !t.deleting && !t.pendingEdit && !ClientMessageIndex.isTombstoned(t);
         }
         long resolved = resolveServerId(id);
         if (resolved != id) {
             if (ClientMessageIndex.isTombstoned(resolved)) return false;
             t = ClientMessageIndex.get(resolved);
-            if (t != null && !t.deleting && !ClientMessageIndex.isTombstoned(t)) {
+            if (t != null && !t.deleting && !t.pendingEdit && !ClientMessageIndex.isTombstoned(t)) {
                 remapTrackedId(id, resolved);
                 return true;
             }
@@ -457,13 +467,13 @@ public final class UnsendComposer {
         if (ClientMessageIndex.isTombstoned(id)) return false;
         ClientTrackedMessage t = ClientMessageIndex.get(id);
         if (t != null) {
-            return !t.deleting && !ClientMessageIndex.isTombstoned(t);
+            return !t.deleting && !t.pendingEdit && !ClientMessageIndex.isTombstoned(t);
         }
         long resolved = resolveServerId(id);
         if (resolved != id) {
             if (ClientMessageIndex.isTombstoned(resolved)) return false;
             t = ClientMessageIndex.get(resolved);
-            return t != null && !t.deleting && !ClientMessageIndex.isTombstoned(t);
+            return t != null && !t.deleting && !t.pendingEdit && !ClientMessageIndex.isTombstoned(t);
         }
         return false;
     }

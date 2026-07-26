@@ -19,9 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class ClientMessageIndex {
     private static final Deque<PendingRegistration> PENDING = new ArrayDeque<>();
     private static final Map<Long, ClientTrackedMessage> BY_ID = new ConcurrentHashMap<>();
-    /** Server/local ids that were unsent — never re-track or edit. */
     private static final Set<Long> TOMBSTONE_IDS = ConcurrentHashMap.newKeySet();
-    /** Chat-line identity: sender|addedTime|plainText. */
     private static final Set<String> TOMBSTONE_LINES = ConcurrentHashMap.newKeySet();
     private static final Set<MessageSignature> TOMBSTONE_SIGS = ConcurrentHashMap.newKeySet();
     private static final long PENDING_TTL_MS = 8000L;
@@ -37,6 +35,7 @@ public final class ClientMessageIndex {
         TOMBSTONE_LINES.clear();
         TOMBSTONE_SIGS.clear();
         UnsendComposer.clear();
+        ClientActionState.clear();
     }
 
     public static boolean isTombstoned(long id) {
@@ -50,7 +49,6 @@ public final class ClientMessageIndex {
         return TOMBSTONE_LINES.contains(lineKey(m.sender, m.addedTime, m.plainText));
     }
 
-    /** Remember a deleted line forever (this session) and purge only true twins. */
     public static void tombstone(ClientTrackedMessage snap) {
         if (snap == null) return;
         TOMBSTONE_IDS.add(snap.id);
@@ -87,12 +85,10 @@ public final class ClientMessageIndex {
         }
     }
 
-    /** Clear a signature ban (visible line still on the HUD). */
     public static void clearSignatureTombstone(MessageSignature signature) {
         if (signature != null) TOMBSTONE_SIGS.remove(signature);
     }
 
-    /** Mark id only — does not touch BY_ID (safe before HUD wipe). */
     public static void tombstoneId(long id) {
         TOMBSTONE_IDS.add(id);
     }
@@ -162,6 +158,7 @@ public final class ClientMessageIndex {
         if (t.signature != null) TOMBSTONE_SIGS.remove(t.signature);
         TOMBSTONE_LINES.remove(lineKey(t.sender, t.addedTime, t.plainText));
         t.deleting = false;
+        t.pendingEdit = false;
         return t;
     }
 
@@ -186,10 +183,8 @@ public final class ClientMessageIndex {
         PENDING.addLast(new PendingRegistration(messageId, sender, senderName, plainText, System.currentTimeMillis()));
     }
 
-    /** Login snapshot: seed BY_ID and bind to any matching HUD lines already on screen. */
     public static void applySnapshot(List<com.bielzinrx.unsend.network.Packets.SnapshotEntry> entries) {
         if (entries == null || entries.isEmpty()) return;
-        // Apply oldest-first so FIFO provisional merge stays stable if any race
         List<com.bielzinrx.unsend.network.Packets.SnapshotEntry> ordered = new ArrayList<>(entries);
         ordered.sort((a, b) -> Long.compare(a.messageId(), b.messageId()));
         for (com.bielzinrx.unsend.network.Packets.SnapshotEntry e : ordered) {
@@ -224,7 +219,6 @@ public final class ClientMessageIndex {
         UnsendComposer.remapTrackedId(provisional.id, serverId);
     }
 
-    /** Edit when we have no tracked row: match HUD by old plain + sender name. */
     public static void applyRemoteEditLoose(UUID sender, String oldPlain, String newText, long serverId) {
         if (oldPlain == null || newText == null || newText.isBlank()) return;
         Minecraft mc = Minecraft.getInstance();
@@ -257,7 +251,6 @@ public final class ClientMessageIndex {
         applyEdit(id, newText, pin);
     }
 
-    /** Oldest provisional with this exact body (FIFO). */
     private static ClientTrackedMessage findProvisional(UUID sender, String plainText) {
         if (plainText == null) return null;
         ClientTrackedMessage best = null;
@@ -390,7 +383,6 @@ public final class ClientMessageIndex {
         return null;
     }
 
-    /** Strip the visual "(edited)" badge from a body string. */
     public static String stripEditedBadge(String s) {
         if (s == null || s.isEmpty()) return s == null ? "" : s;
         String out = s;
@@ -532,7 +524,6 @@ public final class ClientMessageIndex {
         return owned.isEmpty() ? null : owned.get(0);
     }
 
-    /** Pull own lines still in the HUD into BY_ID (up to 200 most recent). */
     private static void backfillOwnedFromHud(UUID self) {
         try {
             Minecraft mc = Minecraft.getInstance();
@@ -549,7 +540,6 @@ public final class ClientMessageIndex {
         }
     }
 
-    /** Own messages newest → oldest (index 0 = most recent). */
     public static List<ClientTrackedMessage> listOwned(UUID self) {
         List<ClientTrackedMessage> owned = new ArrayList<>();
         if (self == null) return owned;
@@ -579,7 +569,6 @@ public final class ClientMessageIndex {
         return deduped;
     }
 
-    /** Same HUD line: equal id/signature, or provisional+server twin of the same tick. */
     private static boolean isSameChatLine(ClientTrackedMessage a, ClientTrackedMessage b) {
         if (a == null || b == null) return false;
         if (a.id == b.id) return true;
@@ -590,7 +579,6 @@ public final class ClientMessageIndex {
         return false;
     }
 
-    /** Rank among own messages with the same plain text, newest-first (0 = bottom/newest). */
     public static int rankAmongSamePlain(ClientTrackedMessage tracked) {
         if (tracked == null) return -1;
         List<ClientTrackedMessage> ordered = listSamePlainNewestFirst(tracked.sender, tracked.plainText);
@@ -601,7 +589,6 @@ public final class ClientMessageIndex {
         return -1;
     }
 
-    /** Newest-first list of distinct own lines with this plain text (for rank / edit target). */
     public static List<ClientTrackedMessage> listSamePlainNewestFirst(UUID sender, String plain) {
         List<ClientTrackedMessage> same = new ArrayList<>();
         if (plain == null) return same;
@@ -638,11 +625,6 @@ public final class ClientMessageIndex {
         return ordered.get(rank);
     }
 
-    /**
-     * Locate a tracked row for a remote delete when the server id was never bound.
-     * Prefers a unique plain match for the sender; if several twins exist, returns null
-     * (caller falls back to HUD wipe of one line).
-     */
     public static ClientTrackedMessage findBestForRemote(UUID sender, String plain) {
         if (plain == null || plain.isBlank()) return null;
         String want = stripEditedBadge(plain.trim());
@@ -653,16 +635,7 @@ public final class ClientMessageIndex {
             String p = m.plainText == null ? "" : stripEditedBadge(m.plainText);
             if (want.equals(p)) hits.add(m);
         }
-        if (hits.isEmpty()) return null;
-        if (hits.size() == 1) return hits.get(0);
-        // Prefer a server-id row (newest id first)
-        hits.sort((a, b) -> {
-            if (a.id >= 0 && b.id >= 0) return Long.compare(b.id, a.id);
-            if (a.id >= 0) return -1;
-            if (b.id >= 0) return 1;
-            return Integer.compare(b.addedTime, a.addedTime);
-        });
-        return hits.get(0);
+        return hits.size() == 1 ? hits.get(0) : null;
     }
 
     public static Iterable<ClientTrackedMessage> all() {
@@ -677,11 +650,6 @@ public final class ClientMessageIndex {
         applyEdit(id, newText, (ChatHudEditor.HudPin) null);
     }
 
-    /**
-     * @param forcedRank newest-first rank among same plain ({@code -1} = compute)
-     * @param forcedAddedTime tick hint ({@code Integer.MIN_VALUE} = ignore)
-     * @param forcedSig signature hint ({@code null} = ignore)
-     */
     public static void applyEdit(long id, String newText, int forcedRank, int forcedAddedTime,
                                  MessageSignature forcedSig) {
         ChatHudEditor.HudPin pin = null;
@@ -709,23 +677,31 @@ public final class ClientMessageIndex {
     }
 
     public static boolean matches(String plain, String fullChatLine) {
-        if (plain == null || plain.isEmpty()) return false;
-        if (fullChatLine == null) return false;
-        String a = stripFormatting(plain).trim();
-        String b = stripFormatting(fullChatLine).trim();
-        if (a.isEmpty() || b.isEmpty()) return false;
-        if (b.equals(a)) return true;
-        if (b.endsWith(a)) {
-            int idx = b.lastIndexOf(a);
-            if (idx <= 0) return true;
-            char before = b.charAt(idx - 1);
-            return before == ' ' || before == '>' || before == ':';
+        if (plain == null || fullChatLine == null) return false;
+        String want = stripEditedBadge(stripFormatting(plain).trim());
+        String full = stripFormatting(fullChatLine).trim();
+        if (want.isEmpty() || full.isEmpty()) return false;
+        if (full.equals(want)) return true;
+
+        String line = full;
+        int newline = line.lastIndexOf('\n');
+        if (newline >= 0 && newline + 1 < line.length()) {
+            line = line.substring(newline + 1).trim();
+        }
+        if (line.equals(want)) return true;
+
+        int gt = line.lastIndexOf('>');
+        if (gt >= 0 && gt + 1 < line.length()) {
+            String body = line.substring(gt + 1).trim();
+            if (body.startsWith(":")) body = body.substring(1).trim();
+            return stripEditedBadge(body).equals(want);
         }
 
-        if (a.length() <= 2) {
-            return b.contains("> " + a) || b.endsWith("> " + a) || b.contains(": " + a);
+        int colon = line.indexOf(':');
+        if (colon > 0 && colon + 1 < line.length() && line.indexOf('<') < 0) {
+            return stripEditedBadge(line.substring(colon + 1).trim()).equals(want);
         }
-        return b.contains(a);
+        return false;
     }
 
     public static String stripFormatting(String s) {
@@ -758,6 +734,7 @@ public final class ClientMessageIndex {
         public int addedTime;
         public Component displayContent;
         public boolean deleting;
+        public boolean pendingEdit;
         public boolean edited;
 
         public ClientTrackedMessage(long id, UUID sender, String senderName, String plainText,

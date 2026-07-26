@@ -10,9 +10,8 @@ import net.minecraft.network.chat.MessageSignature;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID; // sender filter for remote HUD wipe
+import java.util.UUID;
 
-/** Removes exactly one HUD entry for a tracked message. */
 public final class ChatHudRemover {
     private ChatHudRemover() {}
 
@@ -22,7 +21,6 @@ public final class ChatHudRemover {
         removeTracked(tracked, messageId, pin);
     }
 
-    /** Preferred path: pin captured from the exact HUD line the user clicked. */
     public static void removeTracked(ClientTrackedMessage tracked, HudPin pin) {
         long id = tracked != null ? tracked.id : Long.MIN_VALUE;
         removeTracked(tracked, id, pin);
@@ -68,7 +66,6 @@ public final class ChatHudRemover {
         }
     }
 
-    /** Single index only. */
     private static int findExactIndex(List<GuiMessage> all, ClientTrackedMessage tracked,
                                      HudPin pin, Minecraft mc) {
         if (all == null || all.isEmpty()) return -1;
@@ -179,10 +176,6 @@ public final class ChatHudRemover {
         return ClientMessageIndex.stripFormatting(m.content().getString()).trim();
     }
 
-    /**
-     * Wipe one HUD line matching sender name body when we have no tracked id
-     * (remote unsend after register race). Newest match first.
-     */
     public static void removeBySenderAndPlain(UUID sender, String plain) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.gui == null || plain == null || plain.isBlank()) return;
@@ -194,12 +187,12 @@ public final class ChatHudRemover {
         String want = ClientMessageIndex.stripEditedBadge(plain.trim());
         String selfName = null;
         if (sender != null && mc.getConnection() != null) {
-            // Best-effort: use online profile name if available
             var info = mc.getConnection().getPlayerInfo(sender);
             if (info != null) selfName = info.getProfile().getName();
         }
 
         int hit = -1;
+        int hits = 0;
         for (int i = 0; i < all.size(); i++) {
             String full = fullOf(all.get(i));
             if (!bodyEquals(full, want)) continue;
@@ -208,9 +201,9 @@ public final class ChatHudRemover {
                 if (own == null || !want.equals(ClientMessageIndex.stripEditedBadge(own))) continue;
             }
             hit = i;
-            break; // newest-first list
+            hits++;
         }
-        if (hit >= 0) {
+        if (hits == 1 && hit >= 0) {
             all.remove(hit);
             acc.unsend$refreshTrimmedMessage();
         }

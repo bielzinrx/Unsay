@@ -21,5 +21,7 @@
   "unsend.result.deleted": "Apagada",
   "unsend.result.edited": "Editada",
   "modmenu.nameTranslation.unsend": "Unsay",
-  "modmenu.descriptionTranslation.unsend": "Apague, edite e responda mensagens do chat. Segure Shift na sua mensagem."
+  "modmenu.descriptionTranslation.unsend": "Apague, edite e responda mensagens do chat. Segure Shift na sua mensagem.",
+  "unsend.error.not_ready": "A mensagem ainda está sincronizando com o servidor",
+  "unsend.error.pending": "Aguarde a ação atual da mensagem terminar"
 }
