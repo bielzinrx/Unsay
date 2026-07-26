@@ -41,6 +41,7 @@ public final class UnsendHud {
     private static float appearAge;
     private static float trashHoverAnim;
     private static long lastFrameNanos = -1L;
+    private static int heldQuickDeleteKey = GLFW.GLFW_KEY_UNKNOWN;
 
     private record IconHit(long messageId, int x, int y, Action action, ChatHudEditor.HudPin pin) {}
     private record MsgBand(long id, int l, int t, int r, int b, boolean own, int iconY,
@@ -50,6 +51,14 @@ public final class UnsendHud {
     private UnsendHud() {}
 
     public static void clearSelection() {
+        HITS.clear();
+        BANDS.clear();
+        hoverMsgId = Long.MIN_VALUE;
+        lastHoverMsgId = Long.MIN_VALUE;
+        appearAge = 0f;
+        trashHoverAnim = 0f;
+        heldQuickDeleteKey = GLFW.GLFW_KEY_UNKNOWN;
+        UnsendComposer.clear();
     }
 
     public static void onChatScreenRender(ChatScreen screen, GuiGraphics g, int mouseX, int mouseY, float partialTick) {
@@ -60,6 +69,10 @@ public final class UnsendHud {
         hoverMsgId = Long.MIN_VALUE;
 
         Minecraft mc = Minecraft.getInstance();
+        if (heldQuickDeleteKey != GLFW.GLFW_KEY_UNKNOWN
+            && GLFW.glfwGetKey(mc.getWindow().getWindow(), heldQuickDeleteKey) == GLFW.GLFW_RELEASE) {
+            heldQuickDeleteKey = GLFW.GLFW_KEY_UNKNOWN;
+        }
         if (mc.player == null) return;
 
         String status = UnsendComposer.getStatusLabel();
@@ -140,8 +153,9 @@ public final class UnsendHud {
                     break;
                 }
             }
-            boolean canDelete = !b.tracked.deleting && (own || op);
-            boolean canEdit = !b.tracked.deleting && own;
+            boolean idle = !ClientActionState.isBusy();
+            boolean canDelete = idle && !b.tracked.deleting && !b.tracked.pendingEdit && (own || op);
+            boolean canEdit = idle && !b.tracked.deleting && !b.tracked.pendingEdit && own;
 
             int top = b.top;
             int bot = b.bot;
@@ -240,7 +254,6 @@ public final class UnsendHud {
                 case REPLY -> { UnsendComposer.beginReply(t); yield true; }
                 case EDIT -> {
                     if (t.deleting) yield true;
-                    // Pass HUD pin so edit hits THIS line, not the last edited twin
                     UnsendComposer.beginEdit(t, screen, h.pin);
                     yield true;
                 }
@@ -272,6 +285,8 @@ public final class UnsendHud {
             return false;
         }
         if (shift && (keyCode == GLFW.GLFW_KEY_DELETE || keyCode == GLFW.GLFW_KEY_BACKSPACE)) {
+            if (heldQuickDeleteKey == keyCode) return true;
+            heldQuickDeleteKey = keyCode;
             return tryQuickDelete(screen);
         }
         return false;
@@ -279,7 +294,7 @@ public final class UnsendHud {
 
     private static boolean tryQuickDelete(ChatScreen screen) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.player == null) return false;
+        if (mc == null || mc.player == null || ClientActionState.isBusy()) return false;
 
         if (hoverMsgId != Long.MIN_VALUE) {
             ClientTrackedMessage hovered = ClientMessageIndex.get(hoverMsgId);
@@ -318,7 +333,7 @@ public final class UnsendHud {
     }
 
     private static boolean canDelete(ClientTrackedMessage t, Minecraft mc) {
-        if (t == null || t.deleting || mc.player == null) return false;
+        if (t == null || t.deleting || t.pendingEdit || ClientActionState.isBusy() || mc.player == null) return false;
         if (t.isOwnedBy(mc.player.getUUID())) return true;
         return mc.player.hasPermissions(2);
     }
@@ -332,7 +347,6 @@ public final class UnsendHud {
     }
 
     public static void onDeleteBroadcast(long messageId, java.util.UUID sender, String plainText) {
-        UnsendComposer.onMessageDeleted(messageId);
         ClientDelete.applyRemoteDelete(messageId, sender, plainText);
     }
 
@@ -460,7 +474,6 @@ public final class UnsendHud {
         return ClientMessageIndex.stripFormatting(sb.toString());
     }
 
-    /** One GuiMessage instance = one band (multi-line wrap still merges). */
     private static String bandKey(GuiMessage gui) {
         if (gui == null) return "null";
         return "g:" + System.identityHashCode(gui) + ":" + gui.addedTime();

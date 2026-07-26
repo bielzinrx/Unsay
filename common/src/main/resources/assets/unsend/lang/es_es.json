@@ -21,5 +21,7 @@
   "unsend.result.deleted": "Eliminado",
   "unsend.result.edited": "Editado",
   "modmenu.nameTranslation.unsend": "Unsay",
-  "modmenu.descriptionTranslation.unsend": "Elimina, edita y responde mensajes del chat. Mantén Shift en tu mensaje."
+  "modmenu.descriptionTranslation.unsend": "Elimina, edita y responde mensajes del chat. Mantén Shift en tu mensaje.",
+  "unsend.error.not_ready": "El mensaje aún se está sincronizando con el servidor",
+  "unsend.error.pending": "Espera a que termine la acción actual del mensaje"
 }

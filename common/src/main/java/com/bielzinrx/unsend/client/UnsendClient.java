@@ -35,13 +35,18 @@ public final class UnsendClient {
         if (ClientMessageIndex.isTombstoned(messageId)) return;
 
         ClientTrackedMessage tracked = ClientMessageIndex.get(messageId);
+        boolean pendingMatch = tracked != null && tracked.pendingEdit;
         if (tracked == null && oldPlain != null && !oldPlain.isBlank()) {
             tracked = ClientMessageIndex.findBestForRemote(sender, oldPlain);
+            pendingMatch = tracked != null && tracked.pendingEdit;
             if (tracked != null && tracked.id < 0) {
                 ClientMessageIndex.promoteToServerId(tracked, messageId, sender, oldPlain);
                 tracked = ClientMessageIndex.get(messageId);
             }
         }
+        pendingMatch = pendingMatch
+            || ClientActionState.matches(ClientActionState.Type.EDIT, messageId);
+        if (pendingMatch) ClientActionState.confirmEdit();
         if (tracked == null || tracked.deleting || ClientMessageIndex.isTombstoned(tracked)) {
             if (oldPlain != null && !oldPlain.isBlank() && newText != null && !newText.isBlank()) {
                 ClientMessageIndex.applyRemoteEditLoose(sender, oldPlain, newText, messageId);
@@ -49,14 +54,11 @@ public final class UnsendClient {
             return;
         }
 
-        // Local optimistic apply already ran → S2C must NOT re-match among remaining
-        // identical "aaa" twins (would also edit the line above).
         String cur = tracked.plainText == null ? "" : tracked.plainText;
         if (tracked.edited && newText != null && newText.equals(cur)) {
             return;
         }
 
-        // Keep the signature we already bound (local apply) — stronger than re-rank
         var keepSig = tracked.signature;
         int keepTick = tracked.addedTime;
         String matchPlain = (oldPlain != null && !oldPlain.isBlank()) ? oldPlain : cur;
@@ -86,7 +88,8 @@ public final class UnsendClient {
     }
 
     public static void handleResult(boolean ok, String messageKey) {
-        // Success toasts are noisy; only show failures / rate-limit
+        ClientDelete.onResult(ok);
+        ClientActionState.onResult(ok);
         if (ok) return;
         if (messageKey == null || messageKey.isBlank()) return;
         try {
@@ -98,6 +101,7 @@ public final class UnsendClient {
     }
 
     public static void onDisconnect() {
+        ClientActionState.clear();
         ClientMessageIndex.clear();
         UnsendComposer.clear();
     }

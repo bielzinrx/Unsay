@@ -2,13 +2,11 @@ package com.bielzinrx.unsend.platform;
 
 import java.util.ServiceLoader;
 
-/** Platform bridge. */
 public final class Platform {
     private static volatile IPlatformHelper HELPER;
 
     private Platform() {}
 
-    /** Call from Fabric/Forge module constructors before any chat handling. */
     public static void bootstrap(IPlatformHelper helper) {
         if (helper == null) return;
         HELPER = helper;
@@ -25,7 +23,6 @@ public final class Platform {
     }
 
     private static IPlatformHelper load() {
-        // Prefer the mod classloader — TCCL on FJP workers is often wrong on Forge.
         ClassLoader modCl = Platform.class.getClassLoader();
         IPlatformHelper found = find(modCl);
         if (found != null) return found;

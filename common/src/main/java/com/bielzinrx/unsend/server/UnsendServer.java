@@ -14,7 +14,6 @@ public final class UnsendServer {
 
     public static void onPlayerJoin(ServerPlayer player) {
         if (player == null) return;
-        // Delay one tick so client networking is ready
         player.server.execute(() -> ChatMessageTracker.sendSnapshotTo(player));
     }
 

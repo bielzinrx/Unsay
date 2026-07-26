@@ -22,7 +22,6 @@ public final class ChatHudEditor {
 
     private ChatHudEditor() {}
 
-    /** Snapshot of one own chat line as it appears in the HUD (newest-first rank among identical plain bodies). */
     public static final class HudPin {
         public final int rank;
         public final int addedTime;
@@ -43,7 +42,6 @@ public final class ChatHudEditor {
         }
     }
 
-    /** One navigable own line on the HUD (newest → oldest). */
     public static final class HudOwnLine {
         public final int allIndex;
         public final GuiMessage gui;
@@ -101,7 +99,6 @@ public final class ChatHudEditor {
         GuiMessage m = all.get(idx);
         String badge = Component.translatable("unsend.badge.edited").getString();
 
-        // Keep reply citation styles (gray italic ↳ line) — do NOT flatten to plain white
         MutableComponent updated = rebuildLine(m.content(), matchPlain, safe);
         updated.append(Component.literal(" ").withStyle(ChatFormatting.DARK_GRAY));
         updated.append(Component.literal(badge).withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
@@ -117,7 +114,6 @@ public final class ChatHudEditor {
         acc.unsend$refreshTrimmedMessage();
     }
 
-    /** Capture a pin for this tracked row from the live HUD (not from BY_ID alone). */
     public static HudPin capturePin(ClientTrackedMessage tracked) {
         if (tracked == null) return new HudPin(-1, Integer.MIN_VALUE, null, null, "");
         Minecraft mc = Minecraft.getInstance();
@@ -164,7 +160,6 @@ public final class ChatHudEditor {
         return new HudPin(bestRank, g.addedTime(), g.signature(), fullOf(g), plain);
     }
 
-    /** Own chat lines on the HUD, newest → oldest (index 0 = bottom / most recent). */
     public static List<HudOwnLine> listOwnHudLines() {
         List<HudOwnLine> out = new ArrayList<>();
         Minecraft mc = Minecraft.getInstance();
@@ -192,7 +187,6 @@ public final class ChatHudEditor {
         return out;
     }
 
-    /** Rank of this tracked message among own HUD lines with the same plain (newest-first). */
     public static int rankOnHudAmongSamePlain(ClientTrackedMessage tracked) {
         HudPin pin = capturePin(tracked);
         return pin.rank;
@@ -209,7 +203,6 @@ public final class ChatHudEditor {
         MessageSignature forcedSig = pin != null ? pin.signature : null;
         String pinFull = pin != null ? pin.fullLine : null;
 
-        // 1) Unique signature wins (never apply to two identical bodies)
         if (forcedSig != null) {
             int only = -1;
             int hits = 0;
@@ -233,7 +226,6 @@ public final class ChatHudEditor {
             if (hits == 1) return only;
         }
 
-        // 2) Unique full-line pin (or rank among exact full-line twins)
         if (pinFull != null && !pinFull.isEmpty()) {
             List<Integer> exact = new ArrayList<>();
             for (int i = 0; i < all.size(); i++) {
@@ -247,7 +239,6 @@ public final class ChatHudEditor {
 
         if (plain == null || plain.isEmpty()) return -1;
 
-        // 3) Own same-plain, newest-first — rank pin is authoritative for 3× identical text
         List<Integer> ownSame = listOwnSamePlainIndices(all, plain, self, selfName);
         if (ownSame.isEmpty()) {
             for (int i = 0; i < all.size(); i++) {
@@ -279,8 +270,6 @@ public final class ChatHudEditor {
         int rank = ClientMessageIndex.rankAmongSamePlain(tracked);
         if (rank >= 0 && rank < ownSame.size()) return ownSame.get(rank);
 
-        // Ambiguous identical bodies without pin/sig — refuse rather than edit the wrong twin
-        // (caller already optimistically applied locally when possible).
         if (forcedRank < 0 && forcedSig == null && (tracked == null || tracked.signature == null)) {
             return -1;
         }
@@ -302,7 +291,6 @@ public final class ChatHudEditor {
         return best;
     }
 
-    /** Newest-first indices of own lines whose body equals plain. */
     private static List<Integer> listOwnSamePlainIndices(List<GuiMessage> all, String plain,
                                                          UUID self, String selfName) {
         List<Integer> out = new ArrayList<>();
@@ -396,7 +384,6 @@ public final class ChatHudEditor {
         String stripped = ClientMessageIndex.stripFormatting(original == null ? "" : original.getString());
         stripped = ClientMessageIndex.stripEditedBadge(stripped);
 
-        // Reply messages: "  ↳ Name · preview\n<body>"
         int nl = stripped.indexOf('\n');
         if (nl >= 0 && stripped.contains("↳")) {
             String cite = stripped.substring(0, nl);
