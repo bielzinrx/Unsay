@@ -87,7 +87,24 @@ public final class UnsendClient {
         ClientMessageIndex.applySnapshot(payload.entries());
     }
 
+    public static void handleBulkResult(long requestId, int requested, int deleted, int skipped) {
+        ClientBulkDelete.onBulkResult(requestId, requested, deleted, skipped);
+    }
+
     public static void handleResult(boolean ok, String messageKey) {
+        if (ClientBulkDelete.onIndividualResult(ok, messageKey)) return;
+        // Older servers or an interrupted previous deletion can report that a row is already
+        // gone while the local HUD still contains it. For a pending delete, reconcile that row
+        // locally and stay silent instead of trapping an unusable message in the chat.
+        boolean staleDelete = !ok
+            && ClientActionState.pendingType() == ClientActionState.Type.DELETE
+            && ("unsend.error.not_found".equals(messageKey)
+                || "unsend.error.already_gone".equals(messageKey));
+        if (staleDelete) {
+            ClientDelete.applyRemoteDelete(ClientActionState.pendingMessageId());
+            return;
+        }
+
         ClientDelete.onResult(ok);
         ClientActionState.onResult(ok);
         if (ok) return;
@@ -104,5 +121,6 @@ public final class UnsendClient {
         ClientActionState.clear();
         ClientMessageIndex.clear();
         UnsendComposer.clear();
+        ClientBulkDelete.clearAll();
     }
 }

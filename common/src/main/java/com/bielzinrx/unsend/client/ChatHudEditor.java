@@ -28,13 +28,21 @@ public final class ChatHudEditor {
         public final MessageSignature signature;
         public final String fullLine;
         public final String plain;
+        /** Exact client HUD entry. Keeps identical messages stable while earlier rows are removed. */
+        public final GuiMessage guiRef;
 
         public HudPin(int rank, int addedTime, MessageSignature signature, String fullLine, String plain) {
+            this(rank, addedTime, signature, fullLine, plain, null);
+        }
+
+        public HudPin(int rank, int addedTime, MessageSignature signature, String fullLine, String plain,
+                      GuiMessage guiRef) {
             this.rank = rank;
             this.addedTime = addedTime;
             this.signature = signature;
             this.fullLine = fullLine;
             this.plain = plain == null ? "" : plain;
+            this.guiRef = guiRef;
         }
 
         public boolean isValid() {
@@ -110,6 +118,7 @@ public final class ChatHudEditor {
         tracked.edited = true;
         tracked.signature = m.signature();
         tracked.addedTime = m.addedTime();
+        tracked.guiRef = replacement;
 
         acc.unsend$refreshTrimmedMessage();
     }
@@ -157,7 +166,7 @@ public final class ChatHudEditor {
         if (bestRank < 0) bestRank = 0;
 
         GuiMessage g = all.get(ownSame.get(bestRank));
-        return new HudPin(bestRank, g.addedTime(), g.signature(), fullOf(g), plain);
+        return new HudPin(bestRank, g.addedTime(), g.signature(), fullOf(g), plain, g);
     }
 
     public static List<HudOwnLine> listOwnHudLines() {
@@ -197,6 +206,12 @@ public final class ChatHudEditor {
         Minecraft mc = Minecraft.getInstance();
         String selfName = mc != null && mc.player != null ? mc.player.getGameProfile().getName() : null;
         UUID self = mc != null && mc.player != null ? mc.player.getUUID() : null;
+
+        if (pin != null && pin.guiRef != null) {
+            for (int i = 0; i < all.size(); i++) {
+                if (all.get(i) == pin.guiRef) return i;
+            }
+        }
 
         int forcedRank = pin != null ? pin.rank : -1;
         int forcedTick = pin != null ? pin.addedTime : Integer.MIN_VALUE;

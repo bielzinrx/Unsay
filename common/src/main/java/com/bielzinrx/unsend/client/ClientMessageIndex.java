@@ -7,6 +7,8 @@ import net.minecraft.network.chat.MessageSignature;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
@@ -22,6 +24,9 @@ public final class ClientMessageIndex {
     private static final Set<Long> TOMBSTONE_IDS = ConcurrentHashMap.newKeySet();
     private static final Set<String> TOMBSTONE_LINES = ConcurrentHashMap.newKeySet();
     private static final Set<MessageSignature> TOMBSTONE_SIGS = ConcurrentHashMap.newKeySet();
+    /** Identity-based: record equality would collapse identical same-tick chat rows. */
+    private static final Set<GuiMessage> TOMBSTONE_GUI_REFS =
+        Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
     private static final long PENDING_TTL_MS = 8000L;
 
     private static final AtomicLong LOCAL_IDS = new AtomicLong(-1L);
@@ -34,12 +39,21 @@ public final class ClientMessageIndex {
         TOMBSTONE_IDS.clear();
         TOMBSTONE_LINES.clear();
         TOMBSTONE_SIGS.clear();
+        TOMBSTONE_GUI_REFS.clear();
         UnsendComposer.clear();
         ClientActionState.clear();
     }
 
     public static boolean isTombstoned(long id) {
         return TOMBSTONE_IDS.contains(id);
+    }
+
+    public static boolean isGuiTombstoned(GuiMessage message) {
+        return message != null && TOMBSTONE_GUI_REFS.contains(message);
+    }
+
+    public static void tombstoneGui(GuiMessage message) {
+        if (message != null) TOMBSTONE_GUI_REFS.add(message);
     }
 
     public static boolean isTombstoned(ClientTrackedMessage m) {
@@ -52,6 +66,7 @@ public final class ClientMessageIndex {
     public static void tombstone(ClientTrackedMessage snap) {
         if (snap == null) return;
         TOMBSTONE_IDS.add(snap.id);
+        if (snap.guiRef != null) TOMBSTONE_GUI_REFS.add(snap.guiRef);
 
         if (snap.signature != null && !hudStillHasSignature(snap.signature)) {
             TOMBSTONE_SIGS.add(snap.signature);
@@ -142,26 +157,6 @@ public final class ClientMessageIndex {
         return false;
     }
 
-    private static void reviveVisibleLine(GuiMessage msg, UUID self, String ownPlain) {
-        if (msg == null) return;
-        if (msg.signature() != null) {
-            TOMBSTONE_SIGS.remove(msg.signature());
-        }
-        if (self != null && ownPlain != null) {
-            TOMBSTONE_LINES.remove(lineKey(self, msg.addedTime(), ownPlain));
-        }
-    }
-
-    private static ClientTrackedMessage reviveTracked(ClientTrackedMessage t) {
-        if (t == null) return null;
-        TOMBSTONE_IDS.remove(t.id);
-        if (t.signature != null) TOMBSTONE_SIGS.remove(t.signature);
-        TOMBSTONE_LINES.remove(lineKey(t.sender, t.addedTime, t.plainText));
-        t.deleting = false;
-        t.pendingEdit = false;
-        return t;
-    }
-
     public static void onRegisterPacket(long messageId, UUID sender, String senderName, String plainText) {
         prunePending();
         if (isTombstoned(messageId)) return;
@@ -172,8 +167,10 @@ public final class ClientMessageIndex {
                 messageId, sender, senderName != null ? senderName : local.senderName,
                 plainText, local.signature, local.addedTime, local.displayContent);
             merged.edited = local.edited;
+            merged.guiRef = local.guiRef;
             BY_ID.put(messageId, merged);
             BY_ID.remove(local.id);
+            ClientBulkDelete.remapSelectedId(local.id, messageId);
             UnsendComposer.remapTrackedId(local.id, messageId);
             return;
         }
@@ -214,8 +211,10 @@ public final class ClientMessageIndex {
             provisional.displayContent
         );
         merged.edited = provisional.edited;
+        merged.guiRef = provisional.guiRef;
         BY_ID.put(serverId, merged);
         BY_ID.remove(provisional.id);
+        ClientBulkDelete.remapSelectedId(provisional.id, serverId);
         UnsendComposer.remapTrackedId(provisional.id, serverId);
     }
 
@@ -276,8 +275,10 @@ public final class ClientMessageIndex {
                 String content = stripFormatting(msg.content().getString());
                 if (!matches(plainText, content)) continue;
                 if (isHudLineClaimed(msg)) continue;
-                BY_ID.put(messageId, new ClientTrackedMessage(
-                    messageId, sender, senderName, plainText, msg.signature(), msg.addedTime(), msg.content()));
+                ClientTrackedMessage bound = new ClientTrackedMessage(
+                    messageId, sender, senderName, plainText, msg.signature(), msg.addedTime(), msg.content());
+                bound.guiRef = msg;
+                BY_ID.put(messageId, bound);
                 return true;
             }
             return false;
@@ -289,15 +290,19 @@ public final class ClientMessageIndex {
 
     private static boolean isHudLineClaimed(GuiMessage msg) {
         if (msg == null) return false;
+        for (ClientTrackedMessage m : BY_ID.values()) {
+            if (m == null || m.deleting) continue;
+            if (m.guiRef == msg) return true;
+        }
         if (msg.signature() != null) {
             for (ClientTrackedMessage m : BY_ID.values()) {
-                if (m.deleting) continue;
+                if (m == null || m.deleting) continue;
                 if (msg.signature().equals(m.signature)) return true;
             }
         }
         String full = stripFormatting(msg.content().getString());
         for (ClientTrackedMessage m : BY_ID.values()) {
-            if (m.deleting) continue;
+            if (m == null || m.deleting || m.guiRef != null) continue;
             if (m.addedTime == msg.addedTime() && exactLineOrBody(m, full)) return true;
         }
         return false;
@@ -327,9 +332,11 @@ public final class ClientMessageIndex {
                     TOMBSTONE_IDS.add(p.messageId);
                     return;
                 }
-                BY_ID.put(p.messageId, new ClientTrackedMessage(
+                ClientTrackedMessage bound = new ClientTrackedMessage(
                     p.messageId, p.sender, p.senderName, p.plainText,
-                    guiMessage.signature(), guiMessage.addedTime(), guiMessage.content()));
+                    guiMessage.signature(), guiMessage.addedTime(), guiMessage.content());
+                bound.guiRef = guiMessage;
+                BY_ID.put(p.messageId, bound);
                 return;
             }
         }
@@ -349,13 +356,15 @@ public final class ClientMessageIndex {
             clearSignatureTombstone(guiMessage.signature());
         }
 
-        if (findBySignature(guiMessage.signature()) != null) return;
-        if (findByAddedTimeAndContent(guiMessage.addedTime(), guiMessage.content()) != null) return;
+        if (findByGuiReference(guiMessage) != null) return;
+        if (guiMessage.signature() != null && findBySignature(guiMessage.signature()) != null) return;
 
         long id = LOCAL_IDS.getAndDecrement();
-        BY_ID.put(id, new ClientTrackedMessage(
+        ClientTrackedMessage created = new ClientTrackedMessage(
             id, mc.player.getUUID(), name, plain,
-            guiMessage.signature(), guiMessage.addedTime(), guiMessage.content()));
+            guiMessage.signature(), guiMessage.addedTime(), guiMessage.content());
+        created.guiRef = guiMessage;
+        BY_ID.put(id, created);
     }
 
     public static String extractOwnPlain(String full, String playerName) {
@@ -405,8 +414,58 @@ public final class ClientMessageIndex {
         return out.trim();
     }
 
+    /** Returns this exact own-message row's newest-first occurrence among equal texts. */
+    public static int occurrenceFromNewest(ClientTrackedMessage tracked) {
+        if (tracked == null) return 0;
+        String wanted = stripEditedBadge(tracked.plainText == null ? "" : tracked.plainText);
+        if (wanted.isEmpty()) return 0;
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc != null && mc.player != null && mc.gui != null
+                && mc.gui.getChat() instanceof com.bielzinrx.unsend.mixin.ChatComponentAccessor acc) {
+                List<GuiMessage> all = acc.unsend$getAllMessages();
+                String selfName = mc.player.getGameProfile().getName();
+                int occurrence = 0;
+                if (all != null) {
+                    for (GuiMessage msg : all) {
+                        String full = stripFormatting(msg.content().getString());
+                        String own = extractOwnPlain(full, selfName);
+                        if (own == null || !wanted.equals(stripEditedBadge(own))) continue;
+                        if (msg == tracked.guiRef) return occurrence;
+                        occurrence++;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+
+        List<ClientTrackedMessage> same = new ArrayList<>();
+        for (ClientTrackedMessage candidate : BY_ID.values()) {
+            if (candidate == null || candidate.deleting) continue;
+            if (!wanted.equals(stripEditedBadge(candidate.plainText))) continue;
+            same.add(candidate);
+        }
+        same.sort((a, b) -> {
+            int byTick = Integer.compare(b.addedTime, a.addedTime);
+            if (byTick != 0) return byTick;
+            return Long.compare(b.id, a.id);
+        });
+        for (int i = 0; i < same.size(); i++) {
+            if (same.get(i) == tracked || same.get(i).id == tracked.id) return i;
+        }
+        return 0;
+    }
+
     public static ClientTrackedMessage get(long id) {
         return BY_ID.get(id);
+    }
+
+    public static ClientTrackedMessage findByGuiReference(GuiMessage gui) {
+        if (gui == null) return null;
+        for (ClientTrackedMessage m : BY_ID.values()) {
+            if (m != null && m.guiRef == gui) return m;
+        }
+        return null;
     }
 
     public static ClientTrackedMessage findBySignature(MessageSignature signature) {
@@ -435,59 +494,53 @@ public final class ClientMessageIndex {
         String full = stripFormatting(msg.content().getString());
         String ownPlain = selfName != null ? extractOwnPlain(full, selfName) : null;
 
-        reviveVisibleLine(msg, self, ownPlain);
+        if (isGuiTombstoned(msg)) return null;
 
-        ClientTrackedMessage t = findBySignature(msg.signature());
+        ClientTrackedMessage t = findByGuiReference(msg);
         if (t != null) {
-            if (isTombstoned(t.id) || t.deleting || isTombstoned(t)) {
-                return reviveTracked(t);
-            }
+            if (isTombstoned(t.id) || t.deleting || isTombstoned(t)) return null;
             return t;
         }
-        t = findByAddedTimeAndContent(msg.addedTime(), msg.content());
+
+        t = findBySignature(msg.signature());
         if (t != null) {
-            if (isTombstoned(t.id) || t.deleting || isTombstoned(t)) {
-                return reviveTracked(t);
-            }
+            if (t.guiRef != null && t.guiRef != msg) return null;
+            if (t.guiRef == null) t.guiRef = msg;
+            if (isTombstoned(t.id) || t.deleting || isTombstoned(t)) return null;
             return t;
+        }
+
+        // Only bind an old/unbound tracker when the match is unique. Identical messages
+        // created in the same game tick must remain separate selectable entries.
+        ClientTrackedMessage uniqueUnbound = null;
+        int unboundHits = 0;
+        for (ClientTrackedMessage candidate : BY_ID.values()) {
+            if (candidate == null || candidate.deleting || candidate.guiRef != null) continue;
+            if (candidate.addedTime != msg.addedTime()) continue;
+            if (!exactLineOrBody(candidate, full)) continue;
+            uniqueUnbound = candidate;
+            unboundHits++;
+        }
+        if (unboundHits == 1 && uniqueUnbound != null) {
+            uniqueUnbound.guiRef = msg;
+            if (isTombstoned(uniqueUnbound.id) || isTombstoned(uniqueUnbound)) return null;
+            return uniqueUnbound;
         }
 
         if (ownPlain != null && self != null) {
-            for (ClientTrackedMessage m : BY_ID.values()) {
-                if (!m.isOwnedBy(self)) continue;
-                if (m.addedTime == msg.addedTime() && exactLineOrBody(m, full)) {
-                    if (m.deleting || isTombstoned(m.id) || isTombstoned(m)) {
-                        return reviveTracked(m);
-                    }
-                    return m;
-                }
-            }
-            for (ClientTrackedMessage m : BY_ID.values()) {
-                if (!m.isOwnedBy(self)) continue;
-                if (ownPlain.equals(m.plainText) && m.addedTime == msg.addedTime()) {
-                    if (m.deleting || isTombstoned(m.id) || isTombstoned(m)) {
-                        return reviveTracked(m);
-                    }
-                    return m;
-                }
-            }
+            // No exact/bindable tracker exists for this GuiMessage, therefore this is a distinct
+            // row even when its text and addedTime are identical to neighboring messages.
             long id = LOCAL_IDS.getAndDecrement();
             ClientTrackedMessage created = new ClientTrackedMessage(
                 id, self, selfName, ownPlain, msg.signature(), msg.addedTime(), msg.content());
+            created.guiRef = msg;
             BY_ID.put(id, created);
             return created;
         }
 
-        ClientTrackedMessage unique = null;
-        int hits = 0;
-        for (ClientTrackedMessage m : BY_ID.values()) {
-            if (m.deleting || m.id < 0) continue;
-            if (!exactLineOrBody(m, full)) continue;
-            if (m.addedTime == msg.addedTime()) return m;
-            hits++;
-            unique = m;
-        }
-        return hits == 1 ? unique : null;
+        // Foreign rows require their authoritative registration/snapshot. Reusing a tracker by
+        // text here would make visually identical messages share one selection id.
+        return null;
     }
 
     private static boolean exactLineOrBody(ClientTrackedMessage m, String fullLine) {
@@ -733,6 +786,8 @@ public final class ClientMessageIndex {
         public MessageSignature signature;
         public int addedTime;
         public Component displayContent;
+        /** Exact GuiMessage object currently represented by this tracker. */
+        public GuiMessage guiRef;
         public boolean deleting;
         public boolean pendingEdit;
         public boolean edited;

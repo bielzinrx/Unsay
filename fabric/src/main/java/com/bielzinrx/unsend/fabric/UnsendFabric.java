@@ -29,6 +29,11 @@ public final class UnsendFabric implements ModInitializer {
             server.execute(() -> UnsendServer.onDeleteRequest(player, payload.messageId(), payload.plainFallback()));
         });
 
+        ServerPlayNetworking.registerGlobalReceiver(PacketIds.BULK_DELETE_C2S, (server, player, handler, buf, responseSender) -> {
+            Packets.BulkDeleteC2SPayload payload = Packets.readBulkDeleteC2S(buf);
+            server.execute(() -> UnsendServer.onBulkDeleteRequest(player, payload.requestId(), payload.messageIds()));
+        });
+
         ServerPlayNetworking.registerGlobalReceiver(PacketIds.EDIT_C2S, (server, player, handler, buf, responseSender) -> {
             Packets.EditC2SPayload payload = Packets.readEditC2S(buf);
             server.execute(() -> UnsendServer.onEditRequest(player, payload.messageId(), payload.newText()));

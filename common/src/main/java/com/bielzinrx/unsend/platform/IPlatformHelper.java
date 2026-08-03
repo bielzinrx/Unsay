@@ -13,6 +13,8 @@ public interface IPlatformHelper {
 
     void sendEditRequestToServer(long messageId, String newText);
 
+    void sendBulkDeleteRequestToServer(long requestId, List<Long> messageIds);
+
     void sendReplyToServer(long targetId, String text, String targetName, String targetPreview);
 
     void sendRegisterMessage(ServerPlayer target, long messageId, UUID sender, String senderName, String plainText);
@@ -24,4 +26,6 @@ public interface IPlatformHelper {
     void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries);
 
     void sendResult(ServerPlayer target, boolean ok, String messageKey);
+
+    void sendBulkResult(ServerPlayer target, long requestId, int requested, int deleted, int skipped);
 }

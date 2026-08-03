@@ -21,7 +21,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 public final class ForgeNetwork {
-    private static final String PROTOCOL = "5";
+    private static final String PROTOCOL = "6";
     private static SimpleChannel CHANNEL;
     private static int id;
 
@@ -42,6 +42,10 @@ public final class ForgeNetwork {
             DeleteC2S::handle, Optional.of(NetworkDirection.PLAY_TO_SERVER));
         CHANNEL.registerMessage(id++, DeleteS2C.class, DeleteS2C::encode, DeleteS2C::decode,
             DeleteS2C::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CHANNEL.registerMessage(id++, BulkDeleteC2S.class, BulkDeleteC2S::encode, BulkDeleteC2S::decode,
+            BulkDeleteC2S::handle, Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(id++, BulkResultS2C.class, BulkResultS2C::encode, BulkResultS2C::decode,
+            BulkResultS2C::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
         CHANNEL.registerMessage(id++, EditC2S.class, EditC2S::encode, EditC2S::decode,
             EditC2S::handle, Optional.of(NetworkDirection.PLAY_TO_SERVER));
         CHANNEL.registerMessage(id++, EditS2C.class, EditS2C::encode, EditS2C::decode,
@@ -56,6 +60,10 @@ public final class ForgeNetwork {
 
     public static void sendDeleteToServer(long messageId, String plainFallback) {
         CHANNEL.sendToServer(new DeleteC2S(messageId, plainFallback));
+    }
+
+    public static void sendBulkDeleteToServer(long requestId, List<Long> messageIds) {
+        CHANNEL.sendToServer(new BulkDeleteC2S(requestId, messageIds));
     }
 
     public static void sendEditToServer(long messageId, String newText) {
@@ -81,6 +89,12 @@ public final class ForgeNetwork {
 
     public static void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries) {
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> target), new SnapshotS2C(entries));
+    }
+
+    public static void sendBulkResult(ServerPlayer target, long requestId,
+                                      int requested, int deleted, int skipped) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> target),
+            new BulkResultS2C(requestId, requested, deleted, skipped));
     }
 
     public static void sendResult(ServerPlayer target, boolean ok, String messageKey) {
@@ -139,6 +153,44 @@ public final class ForgeNetwork {
             ctx.get().enqueueWork(() ->
                 DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
                     UnsendClient.handleDelete(msg.messageId, msg.sender, msg.plainText)));
+            ctx.get().setPacketHandled(true);
+        }
+    }
+
+    public record BulkDeleteC2S(long requestId, List<Long> messageIds) {
+        public static void encode(BulkDeleteC2S msg, FriendlyByteBuf buf) {
+            Packets.writeBulkDeleteC2S(buf, msg.requestId, msg.messageIds);
+        }
+
+        public static BulkDeleteC2S decode(FriendlyByteBuf buf) {
+            Packets.BulkDeleteC2SPayload p = Packets.readBulkDeleteC2S(buf);
+            return new BulkDeleteC2S(p.requestId(), p.messageIds());
+        }
+
+        public static void handle(BulkDeleteC2S msg, Supplier<NetworkEvent.Context> ctx) {
+            NetworkEvent.Context c = ctx.get();
+            c.enqueueWork(() -> {
+                ServerPlayer player = c.getSender();
+                if (player != null) UnsendServer.onBulkDeleteRequest(player, msg.requestId, msg.messageIds);
+            });
+            c.setPacketHandled(true);
+        }
+    }
+
+    public record BulkResultS2C(long requestId, int requested, int deleted, int skipped) {
+        public static void encode(BulkResultS2C msg, FriendlyByteBuf buf) {
+            Packets.writeBulkResultS2C(buf, msg.requestId, msg.requested, msg.deleted, msg.skipped);
+        }
+
+        public static BulkResultS2C decode(FriendlyByteBuf buf) {
+            Packets.BulkResultS2CPayload p = Packets.readBulkResultS2C(buf);
+            return new BulkResultS2C(p.requestId(), p.requested(), p.deleted(), p.skipped());
+        }
+
+        public static void handle(BulkResultS2C msg, Supplier<NetworkEvent.Context> ctx) {
+            ctx.get().enqueueWork(() ->
+                DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
+                    UnsendClient.handleBulkResult(msg.requestId, msg.requested, msg.deleted, msg.skipped)));
             ctx.get().setPacketHandled(true);
         }
     }

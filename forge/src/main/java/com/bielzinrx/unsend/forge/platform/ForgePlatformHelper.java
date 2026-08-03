@@ -21,6 +21,11 @@ public final class ForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public void sendBulkDeleteRequestToServer(long requestId, List<Long> messageIds) {
+        ForgeNetwork.sendBulkDeleteToServer(requestId, messageIds);
+    }
+
+    @Override
     public void sendEditRequestToServer(long messageId, String newText) {
         ForgeNetwork.sendEditToServer(messageId, newText);
     }
@@ -48,6 +53,12 @@ public final class ForgePlatformHelper implements IPlatformHelper {
     @Override
     public void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries) {
         ForgeNetwork.sendSnapshot(target, entries);
+    }
+
+    @Override
+    public void sendBulkResult(ServerPlayer target, long requestId,
+                               int requested, int deleted, int skipped) {
+        ForgeNetwork.sendBulkResult(target, requestId, requested, deleted, skipped);
     }
 
     @Override

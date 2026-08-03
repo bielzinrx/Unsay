@@ -20,16 +20,26 @@ public final class FabricPlatformHelper implements IPlatformHelper {
     }
 
     @FunctionalInterface
+    public interface BulkDeleteSender {
+        void send(long requestId, List<Long> messageIds);
+    }
+
+    @FunctionalInterface
     public interface ReplySender {
         void send(long targetId, String text, String targetName, String targetPreview);
     }
 
     private static DeleteSender clientDeleteSender = (id, plain) -> {};
     private static BiConsumer<Long, String> clientEditSender = (id, text) -> {};
+    private static BulkDeleteSender clientBulkDeleteSender = (requestId, ids) -> {};
     private static ReplySender clientReplySender = (id, text, name, preview) -> {};
 
     public static void setClientDeleteSender(DeleteSender sender) {
         clientDeleteSender = sender != null ? sender : (id, plain) -> {};
+    }
+
+    public static void setClientBulkDeleteSender(BulkDeleteSender sender) {
+        clientBulkDeleteSender = sender != null ? sender : (requestId, ids) -> {};
     }
 
     public static void setClientEditSender(BiConsumer<Long, String> sender) {
@@ -48,6 +58,11 @@ public final class FabricPlatformHelper implements IPlatformHelper {
     @Override
     public void sendDeleteRequestToServer(long messageId, String plainFallback) {
         clientDeleteSender.send(messageId, plainFallback);
+    }
+
+    @Override
+    public void sendBulkDeleteRequestToServer(long requestId, List<Long> messageIds) {
+        clientBulkDeleteSender.send(requestId, messageIds);
     }
 
     @Override
@@ -86,6 +101,14 @@ public final class FabricPlatformHelper implements IPlatformHelper {
         FriendlyByteBuf buf = PacketByteBufs.create();
         Packets.writeSnapshot(buf, entries);
         ServerPlayNetworking.send(target, PacketIds.SNAPSHOT_S2C, buf);
+    }
+
+    @Override
+    public void sendBulkResult(ServerPlayer target, long requestId,
+                               int requested, int deleted, int skipped) {
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        Packets.writeBulkResultS2C(buf, requestId, requested, deleted, skipped);
+        ServerPlayNetworking.send(target, PacketIds.BULK_RESULT_S2C, buf);
     }
 
     @Override

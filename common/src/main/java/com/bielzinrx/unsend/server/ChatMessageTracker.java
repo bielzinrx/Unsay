@@ -10,7 +10,10 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,9 +32,11 @@ public final class ChatMessageTracker {
     private static final int SNAPSHOT_MAX = 200;
 
     private static final int RATE_WINDOW_MS = 10_000;
-    private static final int RATE_DELETE = 8;
+    private static final int RATE_DELETE = 64;
     private static final int RATE_EDIT = 10;
     private static final int RATE_REPLY = 12;
+    private static final int RATE_BULK = 3;
+    private static final int BULK_MAX = 50;
 
     private ChatMessageTracker() {}
 
@@ -86,19 +91,85 @@ public final class ChatMessageTracker {
             return false;
         }
         if (isDeleted(messageId)) {
-            sendResult(requester, false, "unsend.error.already_gone");
-            return false;
+            // The server is already clean, but an older client HUD may still show the row.
+            // Re-send the authoritative delete only to this player and treat it as success.
+            sendDeleteCleanup(requester, messageId);
+            sendResult(requester, true, "unsend.result.deleted");
+            return true;
         }
 
         TrackedChatMessage msg = messageId > 0 ? MESSAGES.get(messageId) : null;
         if (msg == null && plainFallback != null && !plainFallback.isBlank()) {
-            msg = findOwnedByPlain(requester, plainFallback);
+            Packets.DeleteFallback fallback = Packets.decodeDeleteFallback(plainFallback);
+            msg = fallback.encoded()
+                ? findOwnedByFingerprint(requester, fallback.fingerprint(), fallback.occurrence())
+                : findOwnedByPlain(requester, fallback.plainText());
+        }
+        if (msg == null && messageId > 0L) {
+            // A row may outlive the server tracker after an interrupted older deletion.
+            // Treat the server as authoritative: remove that stale row only for the requester.
+            sendDeleteCleanup(requester, messageId);
+            sendResult(requester, true, "unsend.result.deleted");
+            return true;
         }
         if (msg == null || !canDelete(requester, msg)) {
             sendResult(requester, false, "unsend.error.not_found");
             return false;
         }
 
+        deleteTracked(requester, msg);
+        sendResult(requester, true, "unsend.result.deleted");
+        return true;
+    }
+
+    public static boolean requestBulkDelete(ServerPlayer requester, long requestId, List<Long> messageIds) {
+        if (requester == null) return false;
+        prune();
+        if (!allow(requester.getUUID(), Action.BULK)) {
+            sendResult(requester, false, "unsend.error.rate_limit");
+            sendBulkResult(requester, requestId, 0, 0, 0);
+            return false;
+        }
+
+        Set<Long> unique = new LinkedHashSet<>();
+        if (messageIds != null) {
+            for (Long id : messageIds) {
+                if (id != null && id > 0 && unique.size() < BULK_MAX) unique.add(id);
+            }
+        }
+        int requested = unique.size();
+        int deleted = 0;
+        int skipped = 0;
+        for (Long id : unique) {
+            TrackedChatMessage msg = MESSAGES.get(id);
+            if (isDeleted(id) || msg == null) {
+                // Reconcile stale local rows from an interrupted/older deletion. This affects
+                // only the requester and does not mutate server chat state.
+                sendDeleteCleanup(requester, id);
+                deleted++;
+                continue;
+            }
+            if (!canDelete(requester, msg)) {
+                skipped++;
+                continue;
+            }
+            deleteTracked(requester, msg);
+            deleted++;
+        }
+        sendBulkResult(requester, requestId, requested, deleted, skipped);
+        Unsend.LOGGER.info("[Unsend] Bulk delete by {}: {}/{} removed, {} skipped",
+            requester.getGameProfile().getName(), deleted, requested, skipped);
+        return deleted > 0;
+    }
+
+    private static void sendDeleteCleanup(ServerPlayer target, long id) {
+        try {
+            Platform.get().sendDeleteBroadcast(target, id, null, "");
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void deleteTracked(ServerPlayer requester, TrackedChatMessage msg) {
         UUID sender = msg.sender;
         String plain = msg.plainText == null ? "" : msg.plainText;
         long id = msg.id;
@@ -111,9 +182,8 @@ public final class ChatMessageTracker {
                 Platform.get().sendDeleteBroadcast(player, id, sender, plain);
             }
         }
-        Unsend.LOGGER.info("[Unsend] Message {} deleted by {}", id, requester.getGameProfile().getName());
-        sendResult(requester, true, "unsend.result.deleted");
-        return true;
+        Unsend.LOGGER.info("[Unsend] Message {} deleted by {}", id,
+            requester.getGameProfile().getName());
     }
 
     public static boolean requestEdit(ServerPlayer requester, long messageId, String newText) {
@@ -205,6 +275,23 @@ public final class ChatMessageTracker {
         Platform.get().sendSnapshot(player, entries);
     }
 
+    private static TrackedChatMessage findOwnedByFingerprint(ServerPlayer requester,
+                                                               long fingerprint,
+                                                               int occurrence) {
+        if (requester == null) return null;
+        UUID self = requester.getUUID();
+        List<TrackedChatMessage> matches = new ArrayList<>();
+        for (TrackedChatMessage message : MESSAGES.values()) {
+            if (!self.equals(message.sender) && !requester.hasPermissions(2)) continue;
+            if (Packets.fingerprintPlain(message.plainText) != fingerprint) continue;
+            matches.add(message);
+        }
+        matches.sort(Comparator
+            .comparingLong((TrackedChatMessage message) -> message.createdAtMs).reversed()
+            .thenComparing(Comparator.comparingLong((TrackedChatMessage message) -> message.id).reversed()));
+        return occurrence >= 0 && occurrence < matches.size() ? matches.get(occurrence) : null;
+    }
+
     private static TrackedChatMessage findOwnedByPlain(ServerPlayer requester, String plain) {
         String needle = sanitize(plain);
         if (needle.isEmpty() || requester == null) return null;
@@ -218,7 +305,6 @@ public final class ChatMessageTracker {
             hits++;
             if (best == null || m.createdAtMs > best.createdAtMs) best = m;
         }
-
         return hits == 1 ? best : null;
     }
 
@@ -230,6 +316,14 @@ public final class ChatMessageTracker {
         }
     }
 
+    private static void sendBulkResult(ServerPlayer player, long requestId,
+                                       int requested, int deleted, int skipped) {
+        try {
+            Platform.get().sendBulkResult(player, requestId, requested, deleted, skipped);
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static void sendResult(ServerPlayer player, boolean ok, String key) {
         try {
             Platform.get().sendResult(player, ok, key);
@@ -237,7 +331,7 @@ public final class ChatMessageTracker {
         }
     }
 
-    private enum Action { DELETE, EDIT, REPLY }
+    private enum Action { DELETE, EDIT, REPLY, BULK }
 
     private static boolean allow(UUID player, Action action) {
         if (player == null) return false;
@@ -248,11 +342,13 @@ public final class ChatMessageTracker {
             case DELETE -> RATE_DELETE;
             case EDIT -> RATE_EDIT;
             case REPLY -> RATE_REPLY;
+            case BULK -> RATE_BULK;
         };
         List<Long> list = switch (action) {
             case DELETE -> b.deletes;
             case EDIT -> b.edits;
             case REPLY -> b.replies;
+            case BULK -> b.bulk;
         };
         if (list.size() >= limit) return false;
         list.add(now);
@@ -263,12 +359,14 @@ public final class ChatMessageTracker {
         final List<Long> deletes = new ArrayList<>();
         final List<Long> edits = new ArrayList<>();
         final List<Long> replies = new ArrayList<>();
+        final List<Long> bulk = new ArrayList<>();
 
         void prune(long now) {
             long cut = now - RATE_WINDOW_MS;
             deletes.removeIf(t -> t < cut);
             edits.removeIf(t -> t < cut);
             replies.removeIf(t -> t < cut);
+            bulk.removeIf(t -> t < cut);
         }
     }
 

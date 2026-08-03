@@ -18,6 +18,11 @@ public final class UnsendFabricClient implements ClientModInitializer {
             Packets.writeDeleteC2S(buf, messageId, plainFallback);
             ClientPlayNetworking.send(PacketIds.DELETE_C2S, buf);
         });
+        FabricPlatformHelper.setClientBulkDeleteSender((requestId, messageIds) -> {
+            FriendlyByteBuf buf = PacketByteBufs.create();
+            Packets.writeBulkDeleteC2S(buf, requestId, messageIds);
+            ClientPlayNetworking.send(PacketIds.BULK_DELETE_C2S, buf);
+        });
         FabricPlatformHelper.setClientEditSender((messageId, text) -> {
             FriendlyByteBuf buf = PacketByteBufs.create();
             Packets.writeEditC2S(buf, messageId, text);
@@ -37,6 +42,12 @@ public final class UnsendFabricClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(PacketIds.DELETE_S2C, (client, handler, buf, responseSender) -> {
             Packets.DeleteS2CPayload payload = Packets.readDeleteS2C(buf);
             client.execute(() -> UnsendClient.handleDelete(payload.messageId(), payload.sender(), payload.plainText()));
+        });
+
+        ClientPlayNetworking.registerGlobalReceiver(PacketIds.BULK_RESULT_S2C, (client, handler, buf, responseSender) -> {
+            Packets.BulkResultS2CPayload payload = Packets.readBulkResultS2C(buf);
+            client.execute(() -> UnsendClient.handleBulkResult(
+                payload.requestId(), payload.requested(), payload.deleted(), payload.skipped()));
         });
 
         ClientPlayNetworking.registerGlobalReceiver(PacketIds.EDIT_S2C, (client, handler, buf, responseSender) -> {

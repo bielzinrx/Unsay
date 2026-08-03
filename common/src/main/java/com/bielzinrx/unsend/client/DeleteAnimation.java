@@ -33,6 +33,11 @@ public final class DeleteAnimation {
     private DeleteAnimation() {}
 
     public static void start(String text, float startX, float startY, float trashX, float trashY, Runnable onComplete) {
+        start(text, startX, startY, trashX, trashY, 0f, onComplete);
+    }
+
+    public static void start(String text, float startX, float startY, float trashX, float trashY,
+                             float delay, Runnable onComplete) {
         Font font = Minecraft.getInstance().font;
         String safe = text == null ? "" : text.strip();
         int gt = safe.indexOf('>');
@@ -44,7 +49,9 @@ public final class DeleteAnimation {
         }
         if (safe.isEmpty()) safe = "…";
         float dir = ((safe.hashCode() & 1) == 0) ? 1f : -1f;
-        ACTIVE.add(new Active(safe, startX, startY, trashX, trashY, font.width(safe), dir, onComplete));
+        Active active = new Active(safe, startX, startY, trashX, trashY, font.width(safe), dir, onComplete);
+        active.age = -Math.max(0f, delay);
+        ACTIVE.add(active);
     }
 
     public static void render(GuiGraphics g, float delta) {
@@ -53,6 +60,7 @@ public final class DeleteAnimation {
         while (it.hasNext()) {
             Active a = it.next();
             a.age += dt;
+            if (a.age < 0f) continue;
             float t = Mth.clamp(a.age / DURATION, 0f, 1f);
             float moveEase = easeOutCubic(t);
 

@@ -33,11 +33,18 @@ public final class ClientDelete {
         requestDelete(tracked, fromX, fromY, pin);
     }
 
+    /** Returns true only when the request was actually accepted and sent. */
+    public static boolean tryDeleteTracked(ClientTrackedMessage tracked, float fromX, float fromY,
+                                           HudPin pin) {
+        return requestDelete(tracked, fromX, fromY, pin);
+    }
+
     public static void applyRemoteDelete(long messageId) {
         applyRemoteDelete(messageId, null, null);
     }
 
     public static void applyRemoteDelete(long messageId, UUID sender, String plainText) {
+        ClientBulkDelete.Visual bulkVisual = ClientBulkDelete.visualFor(messageId, sender, plainText);
         ClientTrackedMessage tracked = ClientMessageIndex.get(messageId);
         boolean pendingMatch = tracked != null && (tracked.deleting || pendingLocalId == tracked.id);
         if (tracked == null && plainText != null && !plainText.isBlank()) {
@@ -55,19 +62,42 @@ public final class ClientDelete {
         if (pendingMatch) ClientActionState.confirmDelete();
 
         if (tracked != null) {
-            HudPin pin = pendingMatch ? pendingPin : ChatHudEditor.capturePin(tracked);
-            float fromX = pendingMatch ? pendingOriginX : Float.NaN;
-            float fromY = pendingMatch ? pendingOriginY : Float.NaN;
-            finalizeDelete(tracked, fromX, fromY, pin);
+            HudPin pin = bulkVisual != null ? bulkVisual.pin()
+                : (pendingMatch ? pendingPin : ChatHudEditor.capturePin(tracked));
+            float fromX = bulkVisual != null ? bulkVisual.x()
+                : (pendingMatch ? pendingOriginX : Float.NaN);
+            float fromY = bulkVisual != null ? bulkVisual.y()
+                : (pendingMatch ? pendingOriginY : Float.NaN);
+            float delay = bulkVisual != null ? bulkVisual.delay() : 0f;
+            finalizeDelete(tracked, fromX, fromY, pin, delay);
+            ClientBulkDelete.onDeleteApplied(messageId, sender, plainText);
             if (pendingMatch) clearPendingVisuals();
             return;
         }
 
-        if (plainText != null && !plainText.isBlank()) {
+        if (bulkVisual != null) {
+            boolean removed = ChatHudRemover.removePinned(bulkVisual.pin());
+            if (bulkVisual.pin() != null && bulkVisual.pin().guiRef != null) {
+                ClientMessageIndex.tombstoneGui(bulkVisual.pin().guiRef);
+            }
+            ChatHudRemover.purgeTombstonedRows();
+            if (removed) startPinnedAnimation(bulkVisual);
+        } else if (plainText != null && !plainText.isBlank()) {
             ChatHudRemover.removeBySenderAndPlain(sender, plainText);
         }
         ClientMessageIndex.tombstoneId(messageId);
+        ClientBulkDelete.onDeleteApplied(messageId, sender, plainText);
         if (pendingMatch) clearPendingVisuals();
+    }
+
+    private static void startPinnedAnimation(ClientBulkDelete.Visual visual) {
+        if (visual == null || visual.pin() == null || !UnsayClientConfig.get().animations) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getWindow() == null) return;
+        int sw = mc.getWindow().getGuiScaledWidth();
+        int sh = mc.getWindow().getGuiScaledHeight();
+        String text = visual.pin().fullLine == null ? "" : visual.pin().fullLine;
+        DeleteAnimation.start(text, visual.x(), visual.y(), sw - 36f, sh - 40f, visual.delay(), null);
     }
 
     public static void onResult(boolean ok) {
@@ -80,12 +110,12 @@ public final class ClientDelete {
         if (tracked != null) requestDelete(tracked, Float.NaN, Float.NaN, ChatHudEditor.capturePin(tracked));
     }
 
-    private static void requestDelete(ClientTrackedMessage tracked, float originX, float originY,
-                                      HudPin forcedPin) {
-        if (tracked == null || tracked.deleting || tracked.pendingEdit) return;
+    private static boolean requestDelete(ClientTrackedMessage tracked, float originX, float originY,
+                                         HudPin forcedPin) {
+        if (tracked == null || tracked.deleting || tracked.pendingEdit) return false;
         tracked = resolveServer(tracked);
-        if (tracked == null || tracked.deleting || tracked.pendingEdit) return;
-        if (!ClientActionState.beginDelete(tracked)) return;
+        if (tracked == null || tracked.deleting || tracked.pendingEdit) return false;
+        if (!ClientActionState.beginDelete(tracked)) return false;
 
         pendingPin = forcedPin != null && forcedPin.isValid()
             ? forcedPin : ChatHudEditor.capturePin(tracked);
@@ -96,14 +126,21 @@ public final class ClientDelete {
         String plain = tracked.plainText == null ? "" : tracked.plainText;
         try {
             Platform.get().sendDeleteRequestToServer(tracked.id, plain);
+            return true;
         } catch (Throwable failure) {
             ClientActionState.onResult(false);
             clearPendingVisuals();
+            return false;
         }
     }
 
     private static void finalizeDelete(ClientTrackedMessage tracked, float originX, float originY,
                                        HudPin pin) {
+        finalizeDelete(tracked, originX, originY, pin, 0f);
+    }
+
+    private static void finalizeDelete(ClientTrackedMessage tracked, float originX, float originY,
+                                       HudPin pin, float delay) {
         if (tracked == null) return;
         tracked.deleting = true;
         long id = tracked.id;
@@ -122,7 +159,10 @@ public final class ClientDelete {
 
         ChatHudRemover.removeTracked(tracked, pin);
         ClientMessageIndex.tombstone(tracked);
-        DeleteAnimation.start(animText, fromX, fromY, trashX, trashY, null);
+        ChatHudRemover.purgeTombstonedRows();
+        if (UnsayClientConfig.get().animations) {
+            DeleteAnimation.start(animText, fromX, fromY, trashX, trashY, delay, null);
+        }
     }
 
     private static ClientTrackedMessage resolveServer(ClientTrackedMessage tracked) {

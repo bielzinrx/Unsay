@@ -7,7 +7,46 @@ import java.util.List;
 import java.util.UUID;
 
 public final class Packets {
+    private static final String DELETE_FALLBACK_PREFIX = "\u001fU1:";
+
     private Packets() {}
+
+    /** Compact metadata for provisional rows; stays well below FriendlyByteBuf's 256-char cap. */
+    public static String encodeDeleteFallback(String plainText, int occurrence) {
+        return DELETE_FALLBACK_PREFIX + Math.max(0, occurrence) + ":"
+            + Long.toUnsignedString(fingerprintPlain(plainText), 16);
+    }
+
+    public static DeleteFallback decodeDeleteFallback(String raw) {
+        String value = raw == null ? "" : raw;
+        if (value.startsWith(DELETE_FALLBACK_PREFIX)) {
+            int split = value.indexOf(':', DELETE_FALLBACK_PREFIX.length());
+            if (split > DELETE_FALLBACK_PREFIX.length() && split + 1 < value.length()) {
+                try {
+                    int occurrence = Integer.parseInt(
+                        value.substring(DELETE_FALLBACK_PREFIX.length(), split));
+                    long fingerprint = Long.parseUnsignedLong(value.substring(split + 1), 16);
+                    return new DeleteFallback("", fingerprint, Math.max(0, occurrence), true);
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
+        return new DeleteFallback(value, fingerprintPlain(value), 0, false);
+    }
+
+    /** Deterministic 64-bit FNV-1a over the normalized message body. */
+    public static long fingerprintPlain(String plainText) {
+        String value = plainText == null ? "" : plainText.strip();
+        long hash = 0xcbf29ce484222325L;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            hash ^= c & 0xff;
+            hash *= 0x100000001b3L;
+            hash ^= (c >>> 8) & 0xff;
+            hash *= 0x100000001b3L;
+        }
+        return hash;
+    }
 
     public static void writeRegister(FriendlyByteBuf buf, long messageId, UUID sender, String senderName, String plainText) {
         buf.writeLong(messageId);
@@ -45,6 +84,43 @@ public final class Packets {
         UUID sender = buf.readBoolean() ? buf.readUUID() : null;
         String plain = buf.readUtf(256);
         return new DeleteS2CPayload(id, sender, plain);
+    }
+
+    public static void writeBulkDeleteC2S(FriendlyByteBuf buf, long requestId, List<Long> messageIds) {
+        buf.writeLong(requestId);
+        int n = messageIds == null ? 0 : Math.min(50, messageIds.size());
+        buf.writeVarInt(n);
+        for (int i = 0; i < n; i++) {
+            Long id = messageIds.get(i);
+            buf.writeLong(id == null ? -1L : id);
+        }
+    }
+
+    public static BulkDeleteC2SPayload readBulkDeleteC2S(FriendlyByteBuf buf) {
+        long requestId = buf.readLong();
+        if (requestId <= 0L) {
+            throw new IllegalArgumentException("Invalid bulk-delete request ID: " + requestId);
+        }
+        int declared = buf.readVarInt();
+        if (declared < 0 || declared > 50) {
+            throw new IllegalArgumentException("Invalid bulk-delete size: " + declared);
+        }
+        List<Long> ids = new ArrayList<>(declared);
+        for (int i = 0; i < declared; i++) ids.add(buf.readLong());
+        return new BulkDeleteC2SPayload(requestId, ids);
+    }
+
+    public static void writeBulkResultS2C(FriendlyByteBuf buf, long requestId,
+                                          int requested, int deleted, int skipped) {
+        buf.writeLong(requestId);
+        buf.writeVarInt(Math.max(0, requested));
+        buf.writeVarInt(Math.max(0, deleted));
+        buf.writeVarInt(Math.max(0, skipped));
+    }
+
+    public static BulkResultS2CPayload readBulkResultS2C(FriendlyByteBuf buf) {
+        return new BulkResultS2CPayload(
+            buf.readLong(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt());
     }
 
     public static void writeEditC2S(FriendlyByteBuf buf, long messageId, String newText) {
@@ -142,9 +218,16 @@ public final class Packets {
 
     public record RegisterPayload(long messageId, UUID sender, String senderName, String plainText) {}
 
+    public record DeleteFallback(String plainText, long fingerprint,
+                                 int occurrence, boolean encoded) {}
+
     public record DeleteC2SPayload(long messageId, String plainFallback) {}
 
     public record DeleteS2CPayload(long messageId, UUID sender, String plainText) {}
+
+    public record BulkDeleteC2SPayload(long requestId, List<Long> messageIds) {}
+
+    public record BulkResultS2CPayload(long requestId, int requested, int deleted, int skipped) {}
 
     public record EditC2SPayload(long messageId, String newText) {}
 

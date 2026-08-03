@@ -27,7 +27,7 @@ public final class ClientActionState {
     }
 
     public static synchronized boolean isBusy() {
-        return pendingType != null;
+        return pendingType != null || ClientBulkDelete.isBusy();
     }
 
     public static synchronized Type pendingType() {
@@ -66,6 +66,7 @@ public final class ClientActionState {
     public static synchronized void clear() {
         clearFlags();
         clearState();
+        ClientBulkDelete.clearAll();
     }
 
     private static void clearFlags() {

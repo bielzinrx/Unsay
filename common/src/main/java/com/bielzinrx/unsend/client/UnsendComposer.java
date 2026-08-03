@@ -299,7 +299,8 @@ public final class UnsendComposer {
                 }
 
                 if (id < 0) {
-                    showError("unsend.error.not_ready");
+                    // The registration packet has not arrived yet. Keep edit mode active and
+                    // wait silently; the user can press Enter again once the id is remapped.
                     return true;
                 }
                 if (!ClientActionState.beginEdit(tracked)) {
@@ -311,7 +312,8 @@ public final class UnsendComposer {
                     Platform.get().sendEditRequestToServer(id, text);
                 } catch (Throwable failure) {
                     ClientActionState.onResult(false);
-                    showError("unsend.error.not_ready");
+                    // Network/setup failures are silent here; no technical one-second warning
+                    // should be injected into the player's chat while editing.
                 }
                 return true;
             }

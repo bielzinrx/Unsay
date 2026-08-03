@@ -2,6 +2,8 @@ package com.bielzinrx.unsend.server;
 
 import net.minecraft.server.level.ServerPlayer;
 
+import java.util.List;
+
 public final class UnsendServer {
     private UnsendServer() {}
 
@@ -24,6 +26,11 @@ public final class UnsendServer {
     public static void onDeleteRequest(ServerPlayer player, long messageId, String plainFallback) {
         if (player == null) return;
         ChatMessageTracker.requestDelete(player, messageId, plainFallback);
+    }
+
+    public static void onBulkDeleteRequest(ServerPlayer player, long requestId, List<Long> messageIds) {
+        if (player == null) return;
+        ChatMessageTracker.requestBulkDelete(player, requestId, messageIds);
     }
 
     public static void onEditRequest(ServerPlayer player, long messageId, String newText) {

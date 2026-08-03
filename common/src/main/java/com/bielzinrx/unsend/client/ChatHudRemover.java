@@ -21,6 +21,37 @@ public final class ChatHudRemover {
         removeTracked(tracked, messageId, pin);
     }
 
+    /** Removes the exact GUI row captured at selection time, even if its tracker is gone. */
+    public static boolean removePinned(HudPin pin) {
+        if (pin == null) return false;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.gui == null) return false;
+        ChatComponent chat = mc.gui.getChat();
+        if (!(chat instanceof ChatComponentAccessor acc)) return false;
+        List<GuiMessage> all = acc.unsend$getAllMessages();
+        if (all == null || all.isEmpty()) return false;
+
+        // Identity is authoritative. If another chat refresh replaced the GuiMessage object,
+        // fall back to the captured signature/tick/full-line/rank instead of leaving a ghost row.
+        int index = findExactIndex(all, null, pin, mc);
+        if (index < 0 || index >= all.size()) return false;
+        all.remove(index);
+        acc.unsend$refreshTrimmedMessage();
+        return true;
+    }
+
+    /** Final safety net for a row that was tombstoned after an interrupted older build. */
+    public static void purgeTombstonedRows() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.gui == null) return;
+        ChatComponent chat = mc.gui.getChat();
+        if (!(chat instanceof ChatComponentAccessor acc)) return;
+        List<GuiMessage> all = acc.unsend$getAllMessages();
+        if (all == null || all.isEmpty()) return;
+        boolean changed = all.removeIf(ClientMessageIndex::isGuiTombstoned);
+        if (changed) acc.unsend$refreshTrimmedMessage();
+    }
+
     public static void removeTracked(ClientTrackedMessage tracked, HudPin pin) {
         long id = tracked != null ? tracked.id : Long.MIN_VALUE;
         removeTracked(tracked, id, pin);
@@ -69,6 +100,12 @@ public final class ChatHudRemover {
     private static int findExactIndex(List<GuiMessage> all, ClientTrackedMessage tracked,
                                      HudPin pin, Minecraft mc) {
         if (all == null || all.isEmpty()) return -1;
+
+        if (pin != null && pin.guiRef != null) {
+            for (int i = 0; i < all.size(); i++) {
+                if (all.get(i) == pin.guiRef) return i;
+            }
+        }
 
         MessageSignature forcedSig = pin != null ? pin.signature : null;
         int forcedRank = pin != null ? pin.rank : -1;
