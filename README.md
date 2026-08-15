@@ -17,6 +17,8 @@ No commands and no separate menus. Actions are validated by the server and synch
 
 > Unsay is currently in beta. It must be installed on both the client and server.
 
+![Synchronized message deletion](docs/media/unsay-0.1.6b-synchronized-delete.gif)
+
 ---
 
 ## Main controls
@@ -29,7 +31,7 @@ Open chat and hold **Shift** over a tracked message to reveal its actions:
 | Pencil | Edit your message in place |
 | Reply arrow | Reply with the sender and a short preview |
 
-<img width="840" height="68" alt="Deleting a message with Unsay" src="https://github.com/user-attachments/assets/f3fb5006-a1c4-43f3-b07e-0713e19a6426" />
+![Replying to a message](docs/media/unsay-0.1.6b-reply.gif)
 
 <details>
 <summary><strong>Advanced shortcuts and bulk actions</strong></summary>
@@ -62,10 +64,7 @@ For behavior, configuration and every shortcut, see the [complete controls guide
 - Moderate messages as a server operator.
 - Keep edits and deletions synchronized through the server.
 
-<p>
-  <img width="49%" alt="Editing a message with Unsay" src="https://github.com/user-attachments/assets/c8915395-135c-4d24-a5c7-7fa771d64c92" />
-  <img width="49%" alt="Replying to a message with Unsay" src="https://github.com/user-attachments/assets/edeefd26-2802-44f5-b009-1bef48fed8d7" />
-</p>
+![Operator filters and moderation confirmation](docs/media/unsay-0.1.6b-moderation.gif)
 
 ---
 
