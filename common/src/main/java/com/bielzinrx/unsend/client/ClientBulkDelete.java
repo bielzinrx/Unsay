@@ -38,19 +38,26 @@ public final class ClientBulkDelete {
 
     public static synchronized boolean toggle(ClientTrackedMessage tracked, HudPin pin, float x, float y) {
         if (!selectable(tracked)) return false;
-        if (SELECTED.remove(tracked.id) != null) return true;
+        if (SELECTED.remove(tracked.id) != null) {
+            confirming = false;
+            return true;
+        }
         if (SELECTED.size() >= UnsayClientConfig.get().bulkLimit()) {
             toast("unsend.error.bulk_limit", UnsayClientConfig.get().bulkLimit());
             return true;
         }
-        SELECTED.put(tracked.id, new Selected(tracked.id, pin, x, y, SELECTED.size()));
+        SELECTED.put(tracked.id, new Selected(tracked.id, tracked.sender, pin, x, y,
+            SELECTED.size(), isForeignToCurrentPlayer(tracked)));
+        confirming = false;
         return true;
     }
 
     public static synchronized void select(ClientTrackedMessage tracked, HudPin pin, float x, float y) {
         if (!selectable(tracked) || SELECTED.containsKey(tracked.id)) return;
         if (SELECTED.size() >= UnsayClientConfig.get().bulkLimit()) return;
-        SELECTED.put(tracked.id, new Selected(tracked.id, pin, x, y, SELECTED.size()));
+        SELECTED.put(tracked.id, new Selected(tracked.id, tracked.sender, pin, x, y,
+            SELECTED.size(), isForeignToCurrentPlayer(tracked)));
+        confirming = false;
     }
 
     public static synchronized boolean isSelected(long id) {
@@ -83,9 +90,13 @@ public final class ClientBulkDelete {
         return confirming || isRunning();
     }
 
-    /** Selection itself is the confirmation: one Delete press starts immediately. */
+    /** Own-message selections delete immediately; moderation selections require one clear confirmation. */
     public static synchronized boolean requestSelectedDelete() {
         if (SELECTED.isEmpty() || running) return false;
+        if (containsForeignSelection()) {
+            confirming = true;
+            return true;
+        }
         confirming = false;
         return start();
     }
@@ -190,9 +201,8 @@ public final class ClientBulkDelete {
             || "unsend.error.already_gone".equals(messageKey)) {
             // The server is already clean. Reconcile this exact selected row locally and
             // advance the queue as if the authoritative delete broadcast had arrived.
-            Minecraft mc = Minecraft.getInstance();
-            UUID self = mc != null && mc.player != null ? mc.player.getUUID() : null;
-            ClientDelete.applyRemoteDelete(current.selected.id, self, current.plain);
+            ClientDelete.applyRemoteDelete(current.selected.id, current.selected.sender,
+                current.plain);
             return true;
         }
 
@@ -228,6 +238,10 @@ public final class ClientBulkDelete {
 
     public static synchronized Component status() {
         expireTransientState();
+        if (confirming && !SELECTED.isEmpty()) {
+            return Component.translatable("unsend.bulk.confirm_foreign",
+                SELECTED.size(), foreignSelectionCount());
+        }
         if (!SELECTED.isEmpty() && !running) {
             return Component.translatable("unsend.select.hint", SELECTED.size());
         }
@@ -237,6 +251,33 @@ public final class ClientBulkDelete {
 
     public static synchronized float progress() {
         return requested <= 0 ? 0f : Math.min(1f, applied / (float) requested);
+    }
+
+    /** Drops selections that no longer belong to the active moderation filter. */
+    public static synchronized void revalidateSelection() {
+        if (running) return;
+        Minecraft mc = Minecraft.getInstance();
+        SELECTED.entrySet().removeIf(entry -> {
+            ClientTrackedMessage tracked = ClientMessageIndex.get(entry.getKey());
+            return tracked == null || !ClientSelectionFilter.canSelect(tracked, mc);
+        });
+        confirming = false;
+    }
+
+    private static int foreignSelectionCount() {
+        int count = 0;
+        for (Selected selected : SELECTED.values()) if (selected.foreign) count++;
+        return count;
+    }
+
+    private static boolean containsForeignSelection() {
+        return foreignSelectionCount() > 0;
+    }
+
+    private static boolean isForeignToCurrentPlayer(ClientTrackedMessage tracked) {
+        Minecraft mc = Minecraft.getInstance();
+        if (tracked == null || tracked.sender == null || mc == null || mc.player == null) return false;
+        return !mc.player.getUUID().equals(tracked.sender);
     }
 
     private static boolean selectable(ClientTrackedMessage tracked) {
@@ -251,7 +292,8 @@ public final class ClientBulkDelete {
         remapMap(RUNNING, oldId, newId);
         if (current != null && current.selected.id == oldId) {
             Selected value = current.selected;
-            Selected remapped = new Selected(newId, value.pin, value.x, value.y, value.order);
+            Selected remapped = new Selected(newId, value.sender, value.pin, value.x, value.y,
+                value.order, value.foreign);
             current = new Target(remapped, newId, current.plain, current.fingerprint,
                 current.occurrence, current.fallback);
         }
@@ -261,7 +303,8 @@ public final class ClientBulkDelete {
                 Target t = QUEUE.removeFirst();
                 if (t.selected.id == oldId) {
                     Selected value = t.selected;
-                    Selected remapped = new Selected(newId, value.pin, value.x, value.y, value.order);
+                    Selected remapped = new Selected(newId, value.sender, value.pin, value.x,
+                        value.y, value.order, value.foreign);
                     rebuilt.add(new Target(remapped, newId, t.plain, t.fingerprint,
                         t.occurrence, t.fallback));
                 } else {
@@ -278,7 +321,8 @@ public final class ClientBulkDelete {
         for (Map.Entry<Long, Selected> entry : map.entrySet()) {
             Selected value = entry.getValue();
             if (entry.getKey() == oldId) {
-                rebuilt.put(newId, new Selected(newId, value.pin, value.x, value.y, value.order));
+                rebuilt.put(newId, new Selected(newId, value.sender, value.pin, value.x, value.y,
+                    value.order, value.foreign));
             } else {
                 rebuilt.put(entry.getKey(), value);
             }
@@ -386,9 +430,11 @@ public final class ClientBulkDelete {
         if (current.selected.id == messageId || current.id == messageId) return current;
         if (current.id > 0L) return null;
 
-        Minecraft mc = Minecraft.getInstance();
-        UUID self = mc != null && mc.player != null ? mc.player.getUUID() : null;
-        if (sender != null && self != null && !self.equals(sender)) return null;
+        // A fallback delete is identified by both its author and body. Comparing against the
+        // operator here can acknowledge an identical message from the wrong player and leave the
+        // actual author's row as a ghost on another client.
+        UUID expectedSender = current.selected.sender;
+        if (expectedSender == null || sender == null || !expectedSender.equals(sender)) return null;
         if (plainText == null || plainText.isBlank()) return null;
         return Packets.fingerprintPlain(plainText) == current.fingerprint ? current : null;
     }
@@ -436,7 +482,8 @@ public final class ClientBulkDelete {
         }
     }
 
-    private record Selected(long id, HudPin pin, float x, float y, int order) {}
+    private record Selected(long id, UUID sender, HudPin pin, float x, float y, int order,
+                            boolean foreign) {}
 
     private record Target(Selected selected, long id, String plain, long fingerprint,
                           int occurrence, String fallback) {}

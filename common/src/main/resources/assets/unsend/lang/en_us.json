@@ -22,7 +22,7 @@
   "unsend.result.edited": "Edited",
   "modmenu.nameTranslation.unsend": "Unsay",
   "modmenu.descriptionTranslation.unsend": "Delete, edit and reply to chat messages.",
-  "unsend.error.not_ready": "Try again in a second",
+  "unsend.error.not_ready": "Please wait a moment",
   "unsend.error.pending": "Finish the current action first",
   "unsend.bulk.confirm": "Delete %s messages? Press Delete again",
   "unsend.bulk.progress": "Deleting…",
@@ -31,5 +31,10 @@
   "unsend.controls.newest": "Delete newest: Shift + Delete",
   "unsend.controls.oldest": "Delete oldest: Ctrl + Shift + Delete",
   "unsend.controls.select": "Select: Ctrl + click · Select all: Ctrl + Shift + A",
-  "unsend.bulk.timeout": "Couldn't delete. Try again."
+  "unsend.bulk.timeout": "Couldn't delete. Try again.",
+  "unsend.bulk.confirm_foreign": "Delete %s selected messages (%s from other players)? Press Delete again",
+  "unsend.filter.mine": "Mine",
+  "unsend.filter.others": "Others",
+  "unsend.filter.player": "Player: %s",
+  "unsend.filter.all": "All"
 }

@@ -97,9 +97,10 @@ public final class FabricPlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries) {
+    public void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries,
+                             List<Packets.DeletedSnapshotEntry> deletedEntries) {
         FriendlyByteBuf buf = PacketByteBufs.create();
-        Packets.writeSnapshot(buf, entries);
+        Packets.writeSnapshot(buf, entries, deletedEntries);
         ServerPlayNetworking.send(target, PacketIds.SNAPSHOT_S2C, buf);
     }
 

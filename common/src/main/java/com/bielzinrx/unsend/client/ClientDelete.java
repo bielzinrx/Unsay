@@ -69,8 +69,11 @@ public final class ClientDelete {
             float fromY = bulkVisual != null ? bulkVisual.y()
                 : (pendingMatch ? pendingOriginY : Float.NaN);
             float delay = bulkVisual != null ? bulkVisual.delay() : 0f;
-            finalizeDelete(tracked, fromX, fromY, pin, delay);
+            finalizeDelete(tracked, messageId, sender, plainText, fromX, fromY, pin, delay);
             ClientBulkDelete.onDeleteApplied(messageId, sender, plainText);
+            if (sender != null && plainText != null && !plainText.isBlank()) {
+                ChatHudRemover.reconcileAuthoritativeGroup(sender, plainText);
+            }
             if (pendingMatch) clearPendingVisuals();
             return;
         }
@@ -83,9 +86,12 @@ public final class ClientDelete {
             ChatHudRemover.purgeTombstonedRows();
             if (removed) startPinnedAnimation(bulkVisual);
         } else if (plainText != null && !plainText.isBlank()) {
-            ChatHudRemover.removeBySenderAndPlain(sender, plainText);
+            ChatHudRemover.removeAuthoritative(messageId, sender, plainText, null);
         }
         ClientMessageIndex.tombstoneId(messageId);
+        if (sender != null && plainText != null && !plainText.isBlank()) {
+            ChatHudRemover.reconcileAuthoritativeGroup(sender, plainText);
+        }
         ClientBulkDelete.onDeleteApplied(messageId, sender, plainText);
         if (pendingMatch) clearPendingVisuals();
     }
@@ -137,6 +143,37 @@ public final class ClientDelete {
     private static void finalizeDelete(ClientTrackedMessage tracked, float originX, float originY,
                                        HudPin pin) {
         finalizeDelete(tracked, originX, originY, pin, 0f);
+    }
+
+    private static void finalizeDelete(ClientTrackedMessage tracked, long serverMessageId, UUID sender,
+                                       String plainText, float originX, float originY,
+                                       HudPin pin, float delay) {
+        if (tracked == null) return;
+        tracked.deleting = true;
+        long id = tracked.id;
+        UnsendComposer.onMessageDeleted(id);
+
+        String animText = tracked.displayContent != null
+            ? tracked.displayContent.getString() : tracked.plainText;
+
+        Minecraft mc = Minecraft.getInstance();
+        int sw = mc.getWindow().getGuiScaledWidth();
+        int sh = mc.getWindow().getGuiScaledHeight();
+        float trashX = sw - 36f;
+        float trashY = sh - 40f;
+        float fromX = Float.isFinite(originX) ? originX : Math.min(sw * 0.35f, 120f);
+        float fromY = Float.isFinite(originY) ? originY : (sh - 72f);
+
+        boolean removed = ChatHudRemover.removeAuthoritative(serverMessageId,
+            sender != null ? sender : tracked.sender,
+            plainText != null && !plainText.isBlank() ? plainText : tracked.plainText,
+            tracked);
+        if (!removed) ChatHudRemover.removeTracked(tracked, pin);
+        ClientMessageIndex.tombstone(tracked);
+        ChatHudRemover.purgeTombstonedRows();
+        if (UnsayClientConfig.get().animations) {
+            DeleteAnimation.start(animText, fromX, fromY, trashX, trashY, delay, null);
+        }
     }
 
     private static void finalizeDelete(ClientTrackedMessage tracked, float originX, float originY,

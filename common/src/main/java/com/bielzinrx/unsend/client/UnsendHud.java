@@ -2,6 +2,7 @@ package com.bielzinrx.unsend.client;
 
 import com.bielzinrx.unsend.Unsend;
 import com.bielzinrx.unsend.client.ClientMessageIndex.ClientTrackedMessage;
+import com.bielzinrx.unsend.client.ClientMessageIndex.SenderInfo;
 import com.bielzinrx.unsend.mixin.ChatComponentAccessor;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -25,6 +26,7 @@ public final class UnsendHud {
     private static final int ICON = 14;
     private static final int GAP = 4;
     private static final int PAD = 3;
+    private static final int FILTER_PLAYERS_PER_PAGE = 8;
     private static final float APPEAR_DURATION = 0.14f;
     private static final float HOVER_SPEED = 12f;
 
@@ -35,6 +37,9 @@ public final class UnsendHud {
 
     private static final List<IconHit> HITS = new ArrayList<>();
     private static final List<MsgBand> BANDS = new ArrayList<>();
+    private static final List<FilterHit> FILTER_HITS = new ArrayList<>();
+    private static boolean filterMenuOpen;
+    private static int filterPage;
 
     private static long hoverMsgId = Long.MIN_VALUE;
     private static long lastHoverMsgId = Long.MIN_VALUE;
@@ -53,6 +58,8 @@ public final class UnsendHud {
     private static volatile boolean lineEndAccessorResolved;
 
     private record IconHit(long messageId, int x, int y, Action action, ChatHudEditor.HudPin pin) {}
+    private record FilterHit(int l, int t, int r, int b, ClientSelectionFilter.Mode mode,
+                             UUID playerUuid, String playerName, boolean toggle, int pageDelta) {}
     private record MsgBand(long id, int l, int t, int r, int b, boolean own, int iconY,
                            ChatHudEditor.HudPin pin) {}
     private enum Action { REPLY, EDIT, DELETE }
@@ -62,6 +69,10 @@ public final class UnsendHud {
     public static void clearSelection() {
         HITS.clear();
         BANDS.clear();
+        FILTER_HITS.clear();
+        filterMenuOpen = false;
+        filterPage = 0;
+        ClientSelectionFilter.reset();
         hoverMsgId = Long.MIN_VALUE;
         lastHoverMsgId = Long.MIN_VALUE;
         appearAge = 0f;
@@ -79,6 +90,7 @@ public final class UnsendHud {
         DeleteAnimation.render(g, dt);
         HITS.clear();
         BANDS.clear();
+        FILTER_HITS.clear();
         hoverMsgId = Long.MIN_VALUE;
 
         Minecraft mc = Minecraft.getInstance();
@@ -99,6 +111,13 @@ public final class UnsendHud {
         }
         if (bulkStatus != null && !bulkStatus.getString().isEmpty()) {
             drawStatus(g, mc, bulkStatus, statusY);
+            statusY -= 14;
+        }
+        if (mc.player.hasPermissions(2)
+            && (ClientBulkDelete.isSelectionMode()
+                || UnsayClientConfig.get().selectionModifierDown(mc)
+                || filterMenuOpen)) {
+            drawSelectionFilter(g, mc, mouseX, mouseY, statusY);
         }
 
         ChatComponent chat = mc.gui.getChat();
@@ -294,11 +313,16 @@ public final class UnsendHud {
     public static boolean onChatScreenClick(ChatScreen screen, double mouseX, double mouseY, int button) {
         if (button != 0) return false;
         Minecraft mc = Minecraft.getInstance();
+        if (handleFilterClick(mouseX, mouseY, mc)) {
+            syncSelectionInput(screen);
+            return true;
+        }
         if (!ClientBulkDelete.isRunning() && UnsayClientConfig.get().selectionModifierDown(mc)) {
             for (MsgBand band : BANDS) {
                 if (mouseX < band.l || mouseX > band.r || mouseY < band.t || mouseY > band.b) continue;
                 ClientTrackedMessage tracked = ClientMessageIndex.get(band.id);
-                if (tracked != null && canDelete(tracked, mc) && tracked.id != 0) {
+                if (tracked != null && canDelete(tracked, mc) && tracked.id != 0
+                    && ClientSelectionFilter.canSelect(tracked, mc)) {
                     ClientBulkDelete.toggle(tracked, band.pin,
                         (band.l + band.r) * 0.5f, (band.t + band.b) * 0.5f);
                     syncSelectionInput(screen);
@@ -470,25 +494,6 @@ public final class UnsendHud {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null || ClientActionState.isBusy()) return false;
 
-        if (hoverMsgId != Long.MIN_VALUE) {
-            ClientTrackedMessage hovered = ClientMessageIndex.get(hoverMsgId);
-            if (hovered != null && !hovered.deleting && canDelete(hovered, mc)) {
-                float ox = 40f;
-                float oy = mc.getWindow().getGuiScaledHeight() - 80f;
-                ChatHudEditor.HudPin pin = null;
-                for (MsgBand b : BANDS) {
-                    if (b.id == hoverMsgId) {
-                        ox = (b.l + b.r) * 0.5f;
-                        oy = (b.t + b.b) * 0.5f;
-                        pin = b.pin;
-                        break;
-                    }
-                }
-                ClientDelete.deleteTracked(hovered, ox, oy, pin);
-                return true;
-            }
-        }
-
         try {
             var input = ChatScreenAccess.getInput(screen);
             if (input == null) return false;
@@ -496,6 +501,10 @@ public final class UnsendHud {
             if (UnsendComposer.isEditing() || UnsendComposer.isReplying()) return false;
             if (val != null && !val.isEmpty()) return false;
 
+            // Quick-delete is deliberately independent from the mouse/scroll position:
+            // Shift+Delete means newest own message and Ctrl+Shift+Delete means oldest own
+            // message. A hovered row used to override that contract, letting a stale hover
+            // after scrolling delete an unrelated (and even foreign, for an OP) message.
             List<ClientTrackedMessage> owned = ClientMessageIndex.listOwned(mc.player.getUUID());
             if (owned.isEmpty()) return false;
             ClientTrackedMessage last = oldestFirst ? owned.get(owned.size() - 1) : owned.get(0);
@@ -562,7 +571,8 @@ public final class UnsendHud {
         for (GuiMessage gui : all) {
             if (ClientBulkDelete.selectedCount() >= UnsayClientConfig.get().bulkLimit()) break;
             ClientTrackedMessage tracked = ClientMessageIndex.findOrCreateForGuiMessage(gui, self, selfName);
-            if (tracked == null || tracked.id == 0L || !canDelete(tracked, mc)) continue;
+            if (tracked == null || tracked.id == 0L || !canDelete(tracked, mc)
+                || !ClientSelectionFilter.canSelect(tracked, mc)) continue;
 
             String full = ClientMessageIndex.stripFormatting(gui.content().getString()).trim();
             String plain = tracked.plainText == null ? "" :
@@ -589,6 +599,107 @@ public final class UnsendHud {
         }
         return ClientBulkDelete.selectedCount() > before || ClientBulkDelete.hasSelection();
     }
+
+    private static void drawSelectionFilter(GuiGraphics g, Minecraft mc, int mouseX, int mouseY, int y) {
+        Component label = ClientSelectionFilter.label();
+        String text = label.getString() + " ▾";
+        int x = 2;
+        int w = mc.font.width(text) + 10;
+        int h = 12;
+        boolean hot = mouseX >= x && mouseX <= x + w && mouseY >= y - 2 && mouseY <= y + h;
+        g.fill(x, y - 2, x + w, y + h, hot ? 0xD0192638 : 0xB807111F);
+        g.renderOutline(x, y - 2, w, h + 2, 0x8860A5FA);
+        g.drawString(mc.font, Component.literal(text), x + 5, y, 0xFFE5E7EB, false);
+        FILTER_HITS.add(new FilterHit(x, y - 2, x + w, y + h,
+            ClientSelectionFilter.mode(), null, "", true, 0));
+
+        if (!filterMenuOpen) return;
+        List<FilterChoice> choices = new ArrayList<>();
+        choices.add(new FilterChoice(ClientSelectionFilter.Mode.MINE, null, "",
+            Component.translatable("unsend.filter.mine"), 0));
+        choices.add(new FilterChoice(ClientSelectionFilter.Mode.OTHERS, null, "",
+            Component.translatable("unsend.filter.others"), 0));
+        UUID self = mc.player.getUUID();
+        List<SenderInfo> players = new ArrayList<>();
+        for (SenderInfo info : ClientSelectionFilter.players()) {
+            if (info == null || info.uuid() == null || info.uuid().equals(self)) continue;
+            players.add(info);
+        }
+        int pageCount = Math.max(1,
+            (players.size() + FILTER_PLAYERS_PER_PAGE - 1) / FILTER_PLAYERS_PER_PAGE);
+        filterPage = Mth.clamp(filterPage, 0, pageCount - 1);
+        int playerStart = filterPage * FILTER_PLAYERS_PER_PAGE;
+        int playerEnd = Math.min(players.size(), playerStart + FILTER_PLAYERS_PER_PAGE);
+        for (int i = playerStart; i < playerEnd; i++) {
+            SenderInfo info = players.get(i);
+            choices.add(new FilterChoice(ClientSelectionFilter.Mode.PLAYER, info.uuid(), info.name(),
+                Component.translatable("unsend.filter.player", info.name()), 0));
+        }
+        choices.add(new FilterChoice(ClientSelectionFilter.Mode.ALL, null, "",
+            Component.translatable("unsend.filter.all"), 0));
+        if (pageCount > 1 && filterPage > 0) {
+            choices.add(new FilterChoice(null, null, "",
+                Component.literal("← " + filterPage + "/" + pageCount), -1));
+        }
+        if (pageCount > 1 && filterPage + 1 < pageCount) {
+            choices.add(new FilterChoice(null, null, "",
+                Component.literal((filterPage + 2) + "/" + pageCount + " →"), 1));
+        }
+
+        int itemH = 12;
+        int menuW = w;
+        for (FilterChoice choice : choices) {
+            menuW = Math.max(menuW, mc.font.width(choice.label.getString()) + 10);
+        }
+        int top = y - 4 - choices.size() * itemH;
+        for (int i = 0; i < choices.size(); i++) {
+            FilterChoice choice = choices.get(i);
+            int iy = top + i * itemH;
+            boolean ihot = mouseX >= x && mouseX <= x + menuW && mouseY >= iy && mouseY < iy + itemH;
+            boolean active = choice.mode != null && choice.mode == ClientSelectionFilter.mode()
+                && (choice.mode != ClientSelectionFilter.Mode.PLAYER
+                    || choice.playerUuid.equals(ClientSelectionFilter.playerUuid()));
+            g.fill(x, iy, x + menuW, iy + itemH,
+                ihot ? 0xE01F334A : (active ? 0xD0172A3D : 0xD007111F));
+            g.drawString(mc.font, choice.label, x + 5, iy + 2,
+                active ? 0xFF93C5FD : 0xFFE5E7EB, false);
+            FILTER_HITS.add(new FilterHit(x, iy, x + menuW, iy + itemH,
+                choice.mode, choice.playerUuid, choice.playerName, false, choice.pageDelta));
+        }
+    }
+
+    private static boolean handleFilterClick(double mouseX, double mouseY, Minecraft mc) {
+        if (mc == null || mc.player == null || !mc.player.hasPermissions(2)) return false;
+        for (FilterHit hit : FILTER_HITS) {
+            if (mouseX < hit.l || mouseX > hit.r || mouseY < hit.t || mouseY > hit.b) continue;
+            if (hit.toggle) {
+                filterMenuOpen = !filterMenuOpen;
+                return true;
+            }
+            if (hit.pageDelta != 0) {
+                filterPage = Math.max(0, filterPage + hit.pageDelta);
+                return true;
+            }
+            switch (hit.mode) {
+                case MINE -> ClientSelectionFilter.setMine();
+                case OTHERS -> ClientSelectionFilter.setOthers();
+                case ALL -> ClientSelectionFilter.setAll();
+                case PLAYER -> ClientSelectionFilter.setPlayer(hit.playerUuid, hit.playerName);
+            }
+            filterMenuOpen = false;
+            return true;
+        }
+        if (filterMenuOpen) {
+            // Closing a destructive-action menu must consume the click. Otherwise the same
+            // click can fall through to the chat row behind it and change the selection.
+            filterMenuOpen = false;
+            return true;
+        }
+        return false;
+    }
+
+    private record FilterChoice(ClientSelectionFilter.Mode mode, UUID playerUuid,
+                                String playerName, Component label, int pageDelta) {}
 
     private static void syncSelectionInput(ChatScreen screen) {
         if (screen == null) return;
@@ -704,7 +815,7 @@ public final class UnsendHud {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShaderColor(1f, 1f, 1f, hot ? 1f : 0.92f);
-        g.blit(tex, x, y, 0, 0, ICON, ICON, 16, 16);
+        g.blit(tex, x, y, 0, 0, ICON, ICON, ICON, ICON);
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
         HITS.add(new IconHit(id, x, y, action, pin));
     }

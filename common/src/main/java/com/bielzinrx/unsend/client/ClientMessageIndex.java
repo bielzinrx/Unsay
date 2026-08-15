@@ -11,6 +11,7 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Deque;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -172,9 +173,11 @@ public final class ClientMessageIndex {
             BY_ID.remove(local.id);
             ClientBulkDelete.remapSelectedId(local.id, messageId);
             UnsendComposer.remapTrackedId(local.id, messageId);
+            rebindServerRows(sender, plainText);
             return;
         }
         if (tryBindToExistingHud(messageId, sender, senderName, plainText)) {
+            rebindServerRows(sender, plainText);
             return;
         }
         PENDING.addLast(new PendingRegistration(messageId, sender, senderName, plainText, System.currentTimeMillis()));
@@ -337,6 +340,7 @@ public final class ClientMessageIndex {
                     guiMessage.signature(), guiMessage.addedTime(), guiMessage.content());
                 bound.guiRef = guiMessage;
                 BY_ID.put(p.messageId, bound);
+                rebindServerRows(p.sender, p.plainText);
                 return;
             }
         }
@@ -442,6 +446,7 @@ public final class ClientMessageIndex {
         List<ClientTrackedMessage> same = new ArrayList<>();
         for (ClientTrackedMessage candidate : BY_ID.values()) {
             if (candidate == null || candidate.deleting) continue;
+            if (tracked.sender == null || !tracked.sender.equals(candidate.sender)) continue;
             if (!wanted.equals(stripEditedBadge(candidate.plainText))) continue;
             same.add(candidate);
         }
@@ -690,6 +695,99 @@ public final class ClientMessageIndex {
         }
         return hits.size() == 1 ? hits.get(0) : null;
     }
+
+    /** Known authoritative senders currently represented by the server snapshot/index. */
+    public static List<SenderInfo> knownSenders() {
+        Map<UUID, String> names = new LinkedHashMap<>();
+        for (ClientTrackedMessage m : BY_ID.values()) {
+            if (m == null || m.id <= 0L || m.sender == null || m.deleting || isTombstoned(m)) continue;
+            names.putIfAbsent(m.sender, m.senderName == null ? "" : m.senderName);
+        }
+        List<SenderInfo> result = new ArrayList<>();
+        for (Map.Entry<UUID, String> e : names.entrySet()) {
+            result.add(new SenderInfo(e.getKey(), e.getValue()));
+        }
+        result.sort((a, b) -> {
+            int byName = a.name.compareToIgnoreCase(b.name);
+            if (byName != 0) return byName;
+            return a.uuid.compareTo(b.uuid);
+        });
+        return result;
+    }
+
+    /**
+     * Rebinds equal player-chat rows by stable server id order instead of text-only guessing.
+     * ChatComponent#allMessages is newest-first; server message ids are monotonically increasing,
+     * so descending ids map deterministically to descending GUI rows.
+     */
+    public static void rebindServerRows(UUID sender, String plain) {
+        if (sender == null || plain == null || plain.isBlank()) return;
+        List<ClientTrackedMessage> group = serverGroup(sender, plain);
+        if (group.isEmpty()) return;
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.gui == null) return;
+            if (!(mc.gui.getChat() instanceof com.bielzinrx.unsend.mixin.ChatComponentAccessor acc)) return;
+            List<GuiMessage> all = acc.unsend$getAllMessages();
+            if (all == null || all.isEmpty()) return;
+
+            String senderName = group.get(0).senderName;
+            List<GuiMessage> rows = new ArrayList<>();
+            for (GuiMessage gui : all) {
+                if (matchesPlayerLine(gui, senderName, plain)) rows.add(gui);
+            }
+            for (ClientTrackedMessage m : group) m.guiRef = null;
+            int n = Math.min(group.size(), rows.size());
+            for (int i = 0; i < n; i++) group.get(i).guiRef = rows.get(i);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    public static int serverRank(long messageId, UUID sender, String plain) {
+        if (messageId <= 0L || sender == null || plain == null) return -1;
+        List<ClientTrackedMessage> group = serverGroup(sender, plain);
+        for (int i = 0; i < group.size(); i++) {
+            if (group.get(i).id == messageId) return i;
+        }
+        return -1;
+    }
+
+    public static int activeServerCount(UUID sender, String plain) {
+        return serverGroup(sender, plain).size();
+    }
+
+    public static boolean hasPendingRegistration(UUID sender, String plain) {
+        if (sender == null || plain == null) return false;
+        String want = stripEditedBadge(plain);
+        for (PendingRegistration p : PENDING) {
+            if (!sender.equals(p.sender)) continue;
+            if (want.equals(stripEditedBadge(p.plainText))) return true;
+        }
+        return false;
+    }
+
+    public static boolean matchesPlayerLine(GuiMessage gui, String senderName, String plain) {
+        if (gui == null || gui.content() == null || senderName == null || senderName.isBlank()
+            || plain == null || plain.isBlank()) return false;
+        String full = stripFormatting(gui.content().getString());
+        String body = extractOwnPlain(full, senderName);
+        return body != null && stripEditedBadge(plain).equals(stripEditedBadge(body));
+    }
+
+    private static List<ClientTrackedMessage> serverGroup(UUID sender, String plain) {
+        String want = stripEditedBadge(plain == null ? "" : plain);
+        List<ClientTrackedMessage> group = new ArrayList<>();
+        for (ClientTrackedMessage m : BY_ID.values()) {
+            if (m == null || m.id <= 0L || m.deleting || isTombstoned(m)) continue;
+            if (!sender.equals(m.sender)) continue;
+            if (!want.equals(stripEditedBadge(m.plainText))) continue;
+            group.add(m);
+        }
+        group.sort((a, b) -> Long.compare(b.id, a.id));
+        return group;
+    }
+
+    public record SenderInfo(UUID uuid, String name) {}
 
     public static Iterable<ClientTrackedMessage> all() {
         return BY_ID.values();

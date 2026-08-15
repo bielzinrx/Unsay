@@ -51,8 +51,9 @@ public final class ForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries) {
-        ForgeNetwork.sendSnapshot(target, entries);
+    public void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries,
+                             List<Packets.DeletedSnapshotEntry> deletedEntries) {
+        ForgeNetwork.sendSnapshot(target, entries, deletedEntries);
     }
 
     @Override

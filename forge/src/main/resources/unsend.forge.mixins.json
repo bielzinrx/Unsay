@@ -1,5 +1,6 @@
 {
   "required": false,
+  "minVersion": "0.8",
   "package": "com.bielzinrx.unsend.forge.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [],

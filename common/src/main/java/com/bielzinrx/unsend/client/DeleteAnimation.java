@@ -159,7 +159,7 @@ public final class DeleteAnimation {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShaderColor(1f, 1f, 1f, Mth.clamp(alpha, 0f, 1f));
-        g.blit(tex, x, y, 0, 0, 14, 14, 16, 16);
+        g.blit(tex, x, y, 0, 0, 14, 14, 14, 14);
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
     }
 
@@ -176,7 +176,7 @@ public final class DeleteAnimation {
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
         float liftY = lidOpen ? (1f - openPop) * -2f : 0f;
-        g.blit(tex, (int) x, (int) (y + liftY), 0, 0, 14, 14, 16, 16);
+        g.blit(tex, (int) x, (int) (y + liftY), 0, 0, 14, 14, 14, 14);
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
         g.pose().popPose();
     }

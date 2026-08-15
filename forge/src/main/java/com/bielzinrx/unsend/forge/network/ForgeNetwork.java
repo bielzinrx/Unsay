@@ -16,12 +16,15 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
 
 public final class ForgeNetwork {
-    private static final String PROTOCOL = "6";
+    private static final String PROTOCOL = "7";
+    private static final ResourceLocation CHANNEL_NAME = Objects.requireNonNull(
+        ResourceLocation.tryBuild(Unsend.MOD_ID, "main"));
     private static SimpleChannel CHANNEL;
     private static int id;
 
@@ -30,7 +33,7 @@ public final class ForgeNetwork {
     public static void init() {
         id = 0;
         CHANNEL = NetworkRegistry.ChannelBuilder
-            .named(new ResourceLocation(Unsend.MOD_ID, "main"))
+            .named(CHANNEL_NAME)
             .networkProtocolVersion(() -> PROTOCOL)
             .clientAcceptedVersions(PROTOCOL::equals)
             .serverAcceptedVersions(PROTOCOL::equals)
@@ -87,8 +90,10 @@ public final class ForgeNetwork {
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> target), new EditS2C(messageId, newText, oldPlain, sender));
     }
 
-    public static void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries) {
-        CHANNEL.send(PacketDistributor.PLAYER.with(() -> target), new SnapshotS2C(entries));
+    public static void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries,
+                                    List<Packets.DeletedSnapshotEntry> deletedEntries) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> target),
+            new SnapshotS2C(entries, deletedEntries));
     }
 
     public static void sendBulkResult(ServerPlayer target, long requestId,
@@ -255,19 +260,22 @@ public final class ForgeNetwork {
         }
     }
 
-    public record SnapshotS2C(List<Packets.SnapshotEntry> entries) {
+    public record SnapshotS2C(List<Packets.SnapshotEntry> entries,
+                              List<Packets.DeletedSnapshotEntry> deletedEntries) {
         public static void encode(SnapshotS2C msg, FriendlyByteBuf buf) {
-            Packets.writeSnapshot(buf, msg.entries);
+            Packets.writeSnapshot(buf, msg.entries, msg.deletedEntries);
         }
 
         public static SnapshotS2C decode(FriendlyByteBuf buf) {
-            return new SnapshotS2C(Packets.readSnapshot(buf).entries());
+            Packets.SnapshotPayload payload = Packets.readSnapshot(buf);
+            return new SnapshotS2C(payload.entries(), payload.deletedEntries());
         }
 
         public static void handle(SnapshotS2C msg, Supplier<NetworkEvent.Context> ctx) {
             ctx.get().enqueueWork(() ->
                 DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
-                    UnsendClient.handleSnapshot(new Packets.SnapshotPayload(msg.entries))));
+                    UnsendClient.handleSnapshot(new Packets.SnapshotPayload(
+                        msg.entries, msg.deletedEntries))));
             ctx.get().setPacketHandled(true);
         }
     }

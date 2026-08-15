@@ -23,7 +23,8 @@ public interface IPlatformHelper {
 
     void sendEditBroadcast(ServerPlayer target, long messageId, String newText, String oldPlain, UUID sender);
 
-    void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries);
+    void sendSnapshot(ServerPlayer target, List<Packets.SnapshotEntry> entries,
+                      List<Packets.DeletedSnapshotEntry> deletedEntries);
 
     void sendResult(ServerPlayer target, boolean ok, String messageKey);
 

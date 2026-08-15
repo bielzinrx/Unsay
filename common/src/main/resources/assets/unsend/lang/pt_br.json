@@ -22,7 +22,7 @@
   "unsend.result.edited": "Editada",
   "modmenu.nameTranslation.unsend": "Unsay",
   "modmenu.descriptionTranslation.unsend": "Apague, edite e responda mensagens do chat.",
-  "unsend.error.not_ready": "Tente de novo em um segundo",
+  "unsend.error.not_ready": "Aguarde um momento",
   "unsend.error.pending": "Termine a ação atual primeiro",
   "unsend.bulk.confirm": "Apagar %s mensagens? Aperte Delete de novo",
   "unsend.bulk.progress": "Apagando…",
@@ -31,5 +31,10 @@
   "unsend.controls.newest": "Apagar mais nova: Shift + Delete",
   "unsend.controls.oldest": "Apagar mais antiga: Ctrl + Shift + Delete",
   "unsend.controls.select": "Selecionar: Ctrl + clique · Todas: Ctrl + Shift + A",
-  "unsend.bulk.timeout": "Não foi possível apagar. Tente de novo."
+  "unsend.bulk.timeout": "Não foi possível apagar. Tente de novo.",
+  "unsend.bulk.confirm_foreign": "Excluir %s mensagens selecionadas (%s de outros jogadores)? Aperte Delete novamente",
+  "unsend.filter.mine": "Minhas",
+  "unsend.filter.others": "Outros",
+  "unsend.filter.player": "Jogador: %s",
+  "unsend.filter.all": "Todos"
 }

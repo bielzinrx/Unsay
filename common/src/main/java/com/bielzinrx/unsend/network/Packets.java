@@ -161,22 +161,40 @@ public final class Packets {
         return new ReplyPayload(buf.readLong(), buf.readUtf(256), buf.readUtf(64), buf.readUtf(128));
     }
 
-    public static void writeSnapshot(FriendlyByteBuf buf, List<SnapshotEntry> entries) {
+    public static void writeSnapshot(FriendlyByteBuf buf, List<SnapshotEntry> entries,
+                                     List<DeletedSnapshotEntry> deletedEntries) {
         int n = entries == null ? 0 : Math.min(entries.size(), 200);
         buf.writeVarInt(n);
-        if (entries == null) return;
-        for (int i = 0; i < n; i++) {
-            SnapshotEntry e = entries.get(i);
-            buf.writeLong(e.messageId());
-            buf.writeUUID(e.sender());
-            buf.writeUtf(e.senderName() == null ? "" : e.senderName(), 64);
-            buf.writeUtf(e.plainText() == null ? "" : e.plainText(), 256);
-            buf.writeBoolean(e.edited());
+        if (entries != null) {
+            for (int i = 0; i < n; i++) {
+                SnapshotEntry e = entries.get(i);
+                buf.writeLong(e.messageId());
+                buf.writeUUID(e.sender());
+                buf.writeUtf(e.senderName() == null ? "" : e.senderName(), 64);
+                buf.writeUtf(e.plainText() == null ? "" : e.plainText(), 256);
+                buf.writeBoolean(e.edited());
+            }
+        }
+
+        int deletedCount = deletedEntries == null ? 0 : Math.min(deletedEntries.size(), 200);
+        buf.writeVarInt(deletedCount);
+        if (deletedEntries != null) {
+            for (int i = 0; i < deletedCount; i++) {
+                DeletedSnapshotEntry e = deletedEntries.get(i);
+                buf.writeLong(e.messageId());
+                buf.writeUUID(e.sender());
+                buf.writeUtf(e.senderName() == null ? "" : e.senderName(), 64);
+                buf.writeUtf(e.plainText() == null ? "" : e.plainText(), 256);
+            }
         }
     }
 
+    public static void writeSnapshot(FriendlyByteBuf buf, List<SnapshotEntry> entries) {
+        writeSnapshot(buf, entries, List.of());
+    }
+
     public static SnapshotPayload readSnapshot(FriendlyByteBuf buf) {
-        int n = buf.readVarInt();
+        int n = checkedSnapshotCount(buf.readVarInt(), "active");
         List<SnapshotEntry> list = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             list.add(new SnapshotEntry(
@@ -187,7 +205,27 @@ public final class Packets {
                 buf.readBoolean()
             ));
         }
-        return new SnapshotPayload(list);
+        // Fabric has no channel-version handshake here. Accept the old snapshot shape so a
+        // 0.1.6b client fails gracefully when it briefly meets a 0.1.5b server during rollout.
+        if (!buf.isReadable()) return new SnapshotPayload(list, List.of());
+        int deletedCount = checkedSnapshotCount(buf.readVarInt(), "deleted");
+        List<DeletedSnapshotEntry> deleted = new ArrayList<>(deletedCount);
+        for (int i = 0; i < deletedCount; i++) {
+            deleted.add(new DeletedSnapshotEntry(
+                buf.readLong(),
+                buf.readUUID(),
+                buf.readUtf(64),
+                buf.readUtf(256)
+            ));
+        }
+        return new SnapshotPayload(list, deleted);
+    }
+
+    private static int checkedSnapshotCount(int count, String group) {
+        if (count < 0 || count > 200) {
+            throw new IllegalArgumentException("Invalid " + group + " snapshot size: " + count);
+        }
+        return count;
     }
 
     public static void writeResult(FriendlyByteBuf buf, boolean ok, String messageKey) {
@@ -239,7 +277,11 @@ public final class Packets {
 
     public record SnapshotEntry(long messageId, UUID sender, String senderName, String plainText, boolean edited) {}
 
-    public record SnapshotPayload(List<SnapshotEntry> entries) {}
+    public record DeletedSnapshotEntry(long messageId, UUID sender, String senderName,
+                                       String plainText) {}
+
+    public record SnapshotPayload(List<SnapshotEntry> entries,
+                                  List<DeletedSnapshotEntry> deletedEntries) {}
 
     public record ResultPayload(boolean ok, String messageKey) {}
 }

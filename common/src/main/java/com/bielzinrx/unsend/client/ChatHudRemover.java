@@ -9,7 +9,10 @@ import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.network.chat.MessageSignature;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 public final class ChatHudRemover {
@@ -19,6 +22,123 @@ public final class ChatHudRemover {
         ClientTrackedMessage tracked = ClientMessageIndex.get(messageId);
         HudPin pin = tracked != null ? ChatHudEditor.capturePin(tracked) : null;
         removeTracked(tracked, messageId, pin);
+    }
+
+
+    /**
+     * Removes a server-identified message deterministically on every client. This is the remote
+     * multiplayer path: server id order selects the exact duplicate row even when several lines
+     * have identical text and no client shares GuiMessage object identity with another client.
+     */
+    public static boolean removeAuthoritative(long messageId, UUID sender, String plain,
+                                              ClientTrackedMessage tracked) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.gui == null) return false;
+        ChatComponent chat = mc.gui.getChat();
+        if (!(chat instanceof ChatComponentAccessor acc)) return false;
+        List<GuiMessage> all = acc.unsend$getAllMessages();
+        if (all == null || all.isEmpty()) return false;
+
+        if (sender != null && plain != null && !plain.isBlank()) {
+            ClientMessageIndex.rebindServerRows(sender, plain);
+        }
+
+        // First choice: the stable id has been rebound to the exact GUI row.
+        if (tracked != null && tracked.guiRef != null) {
+            for (int i = 0; i < all.size(); i++) {
+                if (all.get(i) == tracked.guiRef) {
+                    all.remove(i);
+                    acc.unsend$refreshTrimmedMessage();
+                    return true;
+                }
+            }
+        }
+
+        // Second choice: derive the duplicate occurrence from monotonic server ids.
+        if (sender != null && plain != null && !plain.isBlank()) {
+            String senderName = tracked != null ? tracked.senderName : resolveName(mc, sender);
+            int rank = ClientMessageIndex.serverRank(messageId, sender, plain);
+            List<Integer> candidates = playerLineIndices(all, senderName, plain);
+            if (rank >= 0 && rank < candidates.size()) {
+                all.remove((int) candidates.get(rank));
+                acc.unsend$refreshTrimmedMessage();
+                return true;
+            }
+            if (candidates.size() == 1) {
+                all.remove((int) candidates.get(0));
+                acc.unsend$refreshTrimmedMessage();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Removes orphaned duplicate rows after the server index has removed one message. */
+    public static void reconcileAuthoritativeGroup(UUID sender, String plain) {
+        Minecraft mc = Minecraft.getInstance();
+        reconcileAuthoritativeGroup(sender, resolveName(mc, sender), plain);
+    }
+
+    /** Snapshot variant that also works when the deleted message author is currently offline. */
+    public static void reconcileAuthoritativeGroup(UUID sender, String senderName, String plain) {
+        if (sender == null || plain == null || plain.isBlank()) return;
+        if (ClientMessageIndex.hasPendingRegistration(sender, plain)) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.gui == null) return;
+        ChatComponent chat = mc.gui.getChat();
+        if (!(chat instanceof ChatComponentAccessor acc)) return;
+        List<GuiMessage> all = acc.unsend$getAllMessages();
+        if (all == null || all.isEmpty()) return;
+
+        ClientMessageIndex.rebindServerRows(sender, plain);
+        int expected = ClientMessageIndex.activeServerCount(sender, plain);
+        String resolvedName = senderName == null || senderName.isBlank()
+            ? resolveName(mc, sender) : senderName;
+        List<Integer> candidates = playerLineIndices(all, resolvedName, plain);
+        if (candidates.size() <= expected) return;
+
+        Set<GuiMessage> claimed = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (ClientTrackedMessage m : ClientMessageIndex.all()) {
+            if (m == null || m.id <= 0L || m.deleting || m.guiRef == null) continue;
+            if (!sender.equals(m.sender)) continue;
+            if (!ClientMessageIndex.stripEditedBadge(plain)
+                .equals(ClientMessageIndex.stripEditedBadge(m.plainText))) continue;
+            claimed.add(m.guiRef);
+        }
+
+        int excess = candidates.size() - expected;
+        for (int i = candidates.size() - 1; i >= 0 && excess > 0; i--) {
+            int idx = candidates.get(i);
+            if (idx < 0 || idx >= all.size()) continue;
+            GuiMessage gui = all.get(idx);
+            if (claimed.contains(gui)) continue;
+            all.remove(idx);
+            excess--;
+        }
+        if (excess < candidates.size() - expected) acc.unsend$refreshTrimmedMessage();
+        ClientMessageIndex.rebindServerRows(sender, plain);
+    }
+
+    private static List<Integer> playerLineIndices(List<GuiMessage> all, String senderName, String plain) {
+        List<Integer> result = new ArrayList<>();
+        if (all == null || senderName == null || senderName.isBlank()) return result;
+        for (int i = 0; i < all.size(); i++) {
+            if (ClientMessageIndex.matchesPlayerLine(all.get(i), senderName, plain)) result.add(i);
+        }
+        return result;
+    }
+
+    private static String resolveName(Minecraft mc, UUID sender) {
+        if (mc != null && sender != null && mc.getConnection() != null) {
+            var info = mc.getConnection().getPlayerInfo(sender);
+            if (info != null && info.getProfile() != null) return info.getProfile().getName();
+        }
+        for (ClientTrackedMessage m : ClientMessageIndex.all()) {
+            if (m != null && sender != null && sender.equals(m.sender)
+                && m.senderName != null && !m.senderName.isBlank()) return m.senderName;
+        }
+        return "";
     }
 
     /** Removes the exact GUI row captured at selection time, even if its tracker is gone. */

@@ -22,7 +22,7 @@
   "unsend.result.edited": "Editado",
   "modmenu.nameTranslation.unsend": "Unsay",
   "modmenu.descriptionTranslation.unsend": "Elimina, edita y responde mensajes del chat.",
-  "unsend.error.not_ready": "Inténtalo de nuevo en un segundo",
+  "unsend.error.not_ready": "Espera un momento",
   "unsend.error.pending": "Termina la acción actual primero",
   "unsend.bulk.confirm": "¿Eliminar %s mensajes? Pulsa Supr otra vez",
   "unsend.bulk.progress": "Eliminando…",
@@ -31,5 +31,10 @@
   "unsend.controls.newest": "Eliminar más nuevo: Mayús + Supr",
   "unsend.controls.oldest": "Eliminar más antiguo: Ctrl + Mayús + Supr",
   "unsend.controls.select": "Seleccionar: Ctrl + clic · Todas: Ctrl + Mayús + A",
-  "unsend.bulk.timeout": "No se pudo eliminar. Inténtalo otra vez."
+  "unsend.bulk.timeout": "No se pudo eliminar. Inténtalo otra vez.",
+  "unsend.bulk.confirm_foreign": "¿Eliminar %s mensajes seleccionados (%s de otros jugadores)? Pulsa Delete otra vez",
+  "unsend.filter.mine": "Míos",
+  "unsend.filter.others": "Otros",
+  "unsend.filter.player": "Jugador: %s",
+  "unsend.filter.all": "Todos"
 }

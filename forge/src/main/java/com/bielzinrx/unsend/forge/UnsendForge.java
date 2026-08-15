@@ -20,10 +20,9 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 
 @Mod(Unsend.MOD_ID)
 public final class UnsendForge {
-    public UnsendForge() {
-        
+    public UnsendForge(FMLJavaModLoadingContext loadingContext) {
         Platform.bootstrap(new ForgePlatformHelper());
-        IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
+        IEventBus modBus = loadingContext.getModEventBus();
         modBus.addListener(this::commonSetup);
         modBus.addListener(this::clientSetup);
         MinecraftForge.EVENT_BUS.register(this);

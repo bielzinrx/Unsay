@@ -83,8 +83,15 @@ public final class UnsendClient {
     }
 
     public static void handleSnapshot(Packets.SnapshotPayload payload) {
-        if (payload == null || payload.entries() == null) return;
+        if (payload == null) return;
         ClientMessageIndex.applySnapshot(payload.entries());
+        if (payload.deletedEntries() == null) return;
+        for (Packets.DeletedSnapshotEntry deleted : payload.deletedEntries()) {
+            if (deleted == null) continue;
+            ClientMessageIndex.tombstoneId(deleted.messageId());
+            ChatHudRemover.reconcileAuthoritativeGroup(
+                deleted.sender(), deleted.senderName(), deleted.plainText());
+        }
     }
 
     public static void handleBulkResult(long requestId, int requested, int deleted, int skipped) {
@@ -120,6 +127,7 @@ public final class UnsendClient {
     public static void onDisconnect() {
         ClientActionState.clear();
         ClientMessageIndex.clear();
+        ClientSelectionFilter.reset();
         UnsendComposer.clear();
         ClientBulkDelete.clearAll();
     }
