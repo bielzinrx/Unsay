@@ -17,7 +17,7 @@ No commands and no separate menus. Actions are validated by the server and synch
 
 > Unsay is currently in beta. It must be installed on both the client and server.
 
-![Synchronized message deletion](docs/media/unsay-0.1.6b-synchronized-delete.gif)
+![Synchronized message deletion](https://res.cloudinary.com/diexbbgwe/image/upload/v1786978102/unsay-0.1.6b-synchronized-delete_epdvzr.gif)
 
 ---
 
@@ -31,7 +31,7 @@ Open chat and hold **Shift** over a tracked message to reveal its actions:
 | Pencil | Edit your message in place |
 | Reply arrow | Reply with the sender and a short preview |
 
-![Replying to a message](docs/media/unsay-0.1.6b-reply.gif)
+![Replying to a message](https://res.cloudinary.com/diexbbgwe/image/upload/v1786978110/unsay-0.1.6b-reply_hshzfv.gif)
 
 <details>
 <summary><strong>Advanced shortcuts and bulk actions</strong></summary>
@@ -64,7 +64,7 @@ For behavior, configuration and every shortcut, see the [complete controls guide
 - Moderate messages as a server operator.
 - Keep edits and deletions synchronized through the server.
 
-![Operator filters and moderation confirmation](docs/media/unsay-0.1.6b-moderation.gif)
+![Operator filters and moderation confirmation](https://res.cloudinary.com/diexbbgwe/image/upload/v1786978115/unsay-0.1.6b-moderation_emfzze.gif)
 
 ---
 
