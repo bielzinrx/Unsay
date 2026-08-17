@@ -1,0 +1,130 @@
+<h1>Unsay</h1>
+
+<h3><em>Take back what you said.</em></h3>
+
+<p>
+  <a href="https://www.curseforge.com/minecraft/mc-mods/unsay/files"><img src="https://raster.shields.io/badge/Fabric-Supported-dbd0b4.png?style=flat-square" alt="Fabric" height="20"></a>
+  <a href="https://www.curseforge.com/minecraft/mc-mods/unsay/files"><img src="https://raster.shields.io/badge/Forge-Supported-b07219.png?style=flat-square" alt="Forge" height="20"></a>
+  <img src="https://raster.shields.io/badge/Environment-Client%20%2B%20Server-1a6b8a.png?style=flat-square" alt="Client and Server" height="20">
+  <img src="https://raster.shields.io/badge/Java-17-orange.png?style=flat-square" alt="Java 17" height="20">
+</p>
+
+<p><img src="https://cdn.modrinth.com/data/cached_images/a63d73bda86538c85b1478d1add35ef30fe372ae.png" alt="Unsay banner" width="100%"></p>
+
+<p><strong>Unsay adds native-feeling controls for deleting, editing, replying to, and moderating Minecraft chat messages.</strong></p>
+
+<p>Message actions happen directly inside the existing chat screen. There are no commands or separate menus required for ordinary use. Every change is validated by the server and synchronized with connected players, keeping conversations consistent across clients.</p>
+
+<blockquote><p>Unsay must be installed on the server and every participating client.</p></blockquote>
+
+<p><img src="https://res.cloudinary.com/diexbbgwe/image/upload/v1786978102/unsay-0.1.6b-synchronized-delete_epdvzr.gif" alt="Synchronized message deletion" width="100%"></p>
+
+<hr>
+
+<h2>Message Controls</h2>
+
+<p>Open chat and hold <strong>Shift</strong> over a tracked message to reveal its available actions.</p>
+
+<ul>
+  <li><strong>Delete:</strong> remove your message for everyone.</li>
+  <li><strong>Edit:</strong> correct a sent message without posting a replacement.</li>
+  <li><strong>Reply:</strong> include the sender and a short preview in your response.</li>
+</ul>
+
+<p><img src="https://res.cloudinary.com/diexbbgwe/image/upload/v1786978110/unsay-0.1.6b-reply_hshzfv.gif" alt="Replying to a message" width="100%"></p>
+
+<hr>
+
+<h2>Bulk Selection</h2>
+
+<p>Unsay includes a lightweight selection mode integrated directly into Minecraft chat.</p>
+
+<ul>
+  <li><strong>Show controls:</strong> hold <code>Shift</code>.</li>
+  <li><strong>Select a message:</strong> use <code>Ctrl + Click</code>.</li>
+  <li><strong>Select loaded messages:</strong> use <code>Ctrl + Shift + A</code>.</li>
+  <li><strong>Delete selected messages:</strong> press <code>Delete</code>.</li>
+  <li><strong>Cancel selection:</strong> press <code>Esc</code>.</li>
+  <li><strong>Quick delete:</strong> use <code>Shift + Delete</code> or <code>Shift + Backspace</code>.</li>
+  <li><strong>Browse messages for editing:</strong> use <code>Shift + Up Arrow</code>.</li>
+</ul>
+
+<p>Text entered before selection is preserved and restored after deleting or canceling. Shortcuts, confirmations, selection limits, and deletion animations can be customized through the client configuration.</p>
+
+<hr>
+
+<h2>Moderation</h2>
+
+<p>Server operators receive additional controls without starting with unrestricted access.</p>
+
+<ul>
+  <li><strong>Mine:</strong> only the operator's messages.</li>
+  <li><strong>Others:</strong> messages sent by other players.</li>
+  <li><strong>Player:</strong> messages from one specific player UUID.</li>
+  <li><strong>All:</strong> every message the operator is permitted to moderate.</li>
+</ul>
+
+<p>Operators begin with <strong>Mine</strong> selected. Deleting another player's message requires an additional confirmation, helping prevent accidental moderation.</p>
+
+<p><img src="https://res.cloudinary.com/diexbbgwe/image/upload/v1786978115/unsay-0.1.6b-moderation_emfzze.gif" alt="Operator filters and moderation confirmation" width="100%"></p>
+
+<hr>
+
+<h2>Multiplayer Synchronization</h2>
+
+<p>The server validates every edit and deletion before applying it. Unsay keeps message identity stable while handling:</p>
+
+<ul>
+  <li>single and bulk deletion;</li>
+  <li>message editing and contextual replies;</li>
+  <li>identical messages from different players;</li>
+  <li>scrolling and loaded chat history;</li>
+  <li>new messages arriving during selection;</li>
+  <li>reopening chat and reconnecting;</li>
+  <li>synchronization between multiple clients.</li>
+</ul>
+
+<hr>
+
+<h2>Installation</h2>
+
+<h3>Fabric</h3>
+
+<ol>
+  <li>Install Fabric Loader for your Minecraft version.</li>
+  <li>Install the matching Fabric API.</li>
+  <li>Place the Unsay and Fabric API JARs in the <code>mods</code> folder on the server and clients.</li>
+</ol>
+
+<h3>Forge</h3>
+
+<ol>
+  <li>Install Forge for your Minecraft version.</li>
+  <li>Place the Unsay JAR in the <code>mods</code> folder on the server and clients.</li>
+</ol>
+
+<p>Use the same Minecraft version, Unsay release, and loader across the server and participating clients. Do not mix Fabric and Forge files. <strong>Java 17 or newer is required.</strong></p>
+
+<p>Choose a compatible build from the <a href="https://www.curseforge.com/minecraft/mc-mods/unsay/files">Files page</a>.</p>
+
+<hr>
+
+<h2>Privacy</h2>
+
+<p>Unsay does not include telemetry, advertisements, paid features, or external-service connections. Client preferences remain in the Minecraft configuration directory, while permissions and message authority remain controlled by the server.</p>
+
+<hr>
+
+<h2>Support and Links</h2>
+
+<p>
+  <a href="https://github.com/bielzinrx/Unsay"><img src="https://raster.shields.io/badge/GitHub-Source_Code-181717.png?style=flat-square" alt="Source Code" height="20"></a>
+  <a href="https://github.com/bielzinrx/Unsay/issues"><img src="https://raster.shields.io/badge/GitHub-Report_a_Bug-181717.png?style=flat-square" alt="Report a Bug" height="20"></a>
+  <a href="https://modrinth.com/mod/unsay"><img src="https://raster.shields.io/badge/Modrinth-Project_Page-1bd96a.png?style=flat-square" alt="Modrinth" height="20"></a>
+</p>
+
+<p>When reporting a problem, include the Unsay version, Minecraft version, loader, reproduction steps, and client/server logs when available.</p>
+
+<hr>
+
+<p><em>Unsay — take back what you said.</em></p>

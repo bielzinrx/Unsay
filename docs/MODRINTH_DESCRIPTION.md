@@ -1,149 +1,117 @@
 # Unsay
 
-### Take back what you said.
+### *Take back what you said.*
 
-![Fabric](https://img.shields.io/badge/Fabric-1.19.2%20%7C%201.20.1-dbd0b4?style=flat-square)
-![Forge](https://img.shields.io/badge/Forge-1.19.2%20%7C%201.20.1-b07219?style=flat-square)
+[![Fabric](https://img.shields.io/badge/Fabric-Supported-dbd0b4?style=flat-square)](https://modrinth.com/mod/unsay/versions)
+[![Forge](https://img.shields.io/badge/Forge-Supported-b07219?style=flat-square&logo=curseforge&logoColor=white)](https://modrinth.com/mod/unsay/versions)
 ![Environment](https://img.shields.io/badge/Environment-Client%20%2B%20Server-1a6b8a?style=flat-square)
-![Java](https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk&logoColor=white)
-![Status](https://img.shields.io/badge/Status-Beta-f2a900?style=flat-square)
+![Java 17](https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk&logoColor=white)
 
-**Unsay is a Minecraft mod that lets you delete, edit, reply to, and moderate chat
-messages directly from the existing chat screen.**
+![Unsay banner](https://cdn.modrinth.com/data/cached_images/a63d73bda86538c85b1478d1add35ef30fe372ae.png)
 
-There are no commands or separate interfaces required for ordinary message actions.
-Changes are validated by the server and synchronized with every connected player using
-Unsay.
+**Unsay adds native-feeling controls for deleting, editing, replying to, and moderating Minecraft chat messages.**
 
-> Unsay is currently in beta and must be installed on both the server and every
-> participating client.
+Message actions happen directly inside the existing chat screen. There are no commands or separate menus required for ordinary use. Every change is validated by the server and synchronized with connected players, keeping conversations consistent across clients.
 
-![Synchronized message deletion](https://raw.githubusercontent.com/bielzinrx/Unsay/1.20.1/docs/media/unsay-0.1.6b-synchronized-delete.gif)
+> Unsay must be installed on the server and every participating client.
+
+![Synchronized message deletion](https://res.cloudinary.com/diexbbgwe/image/upload/v1786978102/unsay-0.1.6b-synchronized-delete_epdvzr.gif)
 
 ---
 
 ## Message controls
 
-Open chat and hold **Shift** over a tracked message to reveal its controls:
+Open chat and hold **Shift** over a tracked message to reveal its available actions:
 
-- **Trash:** delete your message for everyone.
-- **Pencil:** edit your message without sending a replacement.
-- **Reply arrow:** reply with the sender and a short message preview.
+- **Delete:** remove your message for everyone.
+- **Edit:** correct a sent message without posting a replacement.
+- **Reply:** include the sender and a short preview in your response.
 
-![Replying to a message](https://raw.githubusercontent.com/bielzinrx/Unsay/1.20.1/docs/media/unsay-0.1.6b-reply.gif)
+![Replying to a message](https://res.cloudinary.com/diexbbgwe/image/upload/v1786978110/unsay-0.1.6b-reply_hshzfv.gif)
 
 ---
 
 ## Bulk selection
 
-Unsay includes a selection mode integrated directly into Minecraft chat.
+Unsay includes a lightweight selection mode integrated directly into Minecraft chat.
 
 | Action | Default control |
 |---|---|
+| Show message controls | `Shift` |
 | Select or deselect a message | `Ctrl + Click` |
 | Select loaded messages | `Ctrl + Shift + A` |
-| Delete the current selection | `Delete` |
+| Delete selected messages | `Delete` |
 | Cancel selection | `Esc` |
 | Delete your newest message | `Shift + Delete` or `Shift + Backspace` |
 | Delete your oldest message | `Ctrl + Shift + Delete` or `Ctrl + Shift + Backspace` |
 | Browse recent messages for editing | `Shift + Up Arrow` |
 
-Text entered before opening selection mode is preserved and restored after deleting or
-canceling.
+Text entered before selection is preserved and restored after deleting or canceling. Shortcuts, confirmations, selection limits, and deletion animations can be customized through the client configuration.
 
 ---
 
-## Moderation controls
+## Moderation
 
-Server operators can moderate messages without receiving unrestricted selection by
-default. Unsay 0.1.6b adds the following operator filters:
+Server operators receive additional controls without starting with unrestricted access. Available filters include:
 
 - **Mine:** only the operator's messages.
 - **Others:** messages sent by other players.
-- **Player:** messages from one specific UUID.
-- **All:** every message the operator is allowed to moderate.
+- **Player:** messages from one specific player UUID.
+- **All:** every message the operator is permitted to moderate.
 
-Operators always begin with **Mine** selected. Deleting another player's message
-requires an additional confirmation, helping prevent accidental moderation.
+Operators begin with **Mine** selected. Deleting another player's message requires an additional confirmation, helping prevent accidental moderation.
 
-![Operator filters and moderation confirmation](https://raw.githubusercontent.com/bielzinrx/Unsay/1.20.1/docs/media/unsay-0.1.6b-moderation.gif)
+![Operator filters and moderation confirmation](https://res.cloudinary.com/diexbbgwe/image/upload/v1786978115/unsay-0.1.6b-moderation_emfzze.gif)
 
 ---
 
 ## Multiplayer synchronization
 
-Message actions are validated by the server before being applied. Unsay handles:
+The server validates every edit and deletion before applying it. Unsay keeps message identity stable while handling:
 
 - single and bulk deletion;
-- message editing;
-- replies with tracked context;
+- message editing and contextual replies;
 - identical messages from different players;
-- new messages arriving during a selection;
-- deletion after scrolling;
+- scrolling and loaded chat history;
+- new messages arriving during selection;
 - reopening chat and reconnecting;
-- synchronization between connected players.
-
-Version 0.1.6b also fixes remote ghost messages that could remain visible on another
-player's client after deletion.
-
----
-
-## Requirements
-
-Unsay must be installed on the **server and every participating client**.
-
-### Fabric
-
-- Fabric Loader
-- Fabric API
-- Unsay Fabric build matching the Minecraft version
-
-### Forge
-
-- Forge
-- Unsay Forge build matching the Minecraft version
-
-### General
-
-- Java 17 or newer
-- The same Unsay release and loader on the server and clients
-
-Do not mix Fabric and Forge installations.
-
----
-
-## Supported versions
-
-| Minecraft | Loader | Unsay release |
-|---|---|---|
-| 1.20.1 | Fabric | 0.1.6b |
-| 1.20.1 | Forge | 0.1.6b |
-| 1.19.2 | Fabric and Forge | Previous beta release |
-
-The moderation and synchronization improvements described for 0.1.6b currently apply
-to Minecraft 1.20.1.
+- synchronization between multiple clients.
 
 ---
 
 ## Installation
 
-1. Install Fabric or Forge for your Minecraft version.
-2. Install Fabric API when using the Fabric build.
-3. Download the matching Unsay JAR.
-4. Place the required files in the `mods` folder on the server and clients.
-5. Restart the game and server.
+### Fabric
+
+1. Install Fabric Loader for your Minecraft version.
+2. Install the matching Fabric API.
+3. Place the Unsay and Fabric API JARs in the `mods` folder on the server and clients.
+
+### Forge
+
+1. Install Forge for your Minecraft version.
+2. Place the Unsay JAR in the `mods` folder on the server and clients.
+
+Use the same Minecraft version, Unsay release, and loader across the server and participating clients. Do not mix Fabric and Forge files. Java 17 or newer is required.
+
+Choose a compatible build from the [Versions page](https://modrinth.com/mod/unsay/versions).
 
 ---
 
-## Links
+## Privacy
+
+Unsay does not include telemetry, advertisements, paid features, or external-service connections. Client preferences remain in the Minecraft configuration directory, while permissions and message authority remain controlled by the server.
+
+---
+
+## Support and links
 
 - [Source code](https://github.com/bielzinrx/Unsay)
-- [Latest GitHub release](https://github.com/bielzinrx/Unsay/releases/latest)
 - [Complete controls guide](https://github.com/bielzinrx/Unsay/blob/1.20.1/docs/CONTROLS.md)
 - [Report a bug](https://github.com/bielzinrx/Unsay/issues)
+- [CurseForge page](https://www.curseforge.com/minecraft/mc-mods/unsay)
 
-When reporting a problem, include the Unsay version, Minecraft version, loader,
-reproduction steps, and both client and server logs when available.
+When reporting a problem, include the Unsay version, Minecraft version, loader, reproduction steps, and client/server logs when available.
 
 ---
 
